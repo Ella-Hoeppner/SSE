@@ -27,17 +27,17 @@ This project aims to establish a new text format, called "GSE" for **G**eneraliz
 The goal in defining this new format is to provide a unified syntactic framework that can be shared between all S-expression based languages. As such, GSE can provide a foundation for shared tooling between different languages that abstracts away minor details like what kind of prefix operators or delimiters are available in a language. GSE will be able to encapsulate the syntax of most existing Lisps, including Clojure, Scheme, and Common Lisp, but the main goal of GSE is to provide a convenient shared syntactic framework for future languages. Specfically, a core goal of GSE is to make it easy to define alternative syntaxes for non-lispy languages that can be easily transpiled to and from the original syntax, allowing these languages to gain the benefits of Lisp syntax, including things like macros, structural editing, and, potentially, [visual editing](https://github.com/Ella-Hoeppner/Vlojure).
 
 ## to do
+* Support delimiters that use the same character for opener and closer, e.g. `|...|` like in rust
+* Make delimiters and prefixes context-sensitive, i.e. what delimiters/prefixes are available depends on what delimiter/prefix the parser inside of
+* Parser should operate over a &str or at least a String, rather than a Vec<char>
+* Support escape characters inside delimiters
+  * This should be determined by a function in the `Delimiter` trait
+  * Handle strings as a special case of delimiter
 * `GSexp::from_sexp`
   * Converts a pure-sexp back into `GSexp`, given a set of prefix/delimiter types
     * will have to figure out how to handle cases where there are multiple delimiters/prefixes with the same tag...
       * could just always use the first one, but then converting back to GSE would be lossy
       * I guess when there are multiple options for which delimiter/prefix to use, each element could store an index for which one it came from
-* Make delimiters and prefixes context-sensitive, i.e. what delimiters/prefixes are available depends on what delimiter/prefix the parser inside of
-* Parser should operate over a &str or at least a String, rather than a Vec<char>
-* Support delimiters that use the same character for opener and closer, e.g. `|...|` like in rust
-* Support escape characters inside delimiters
-  * This should be determined by a function in the `Delimiter` trait
-* Let strings be handled as a special case of delimiter
 * keep track of character indeces for each element, such that the original string can be recreated losslessly
   * I guess maybe we also need a "trailing whitespace" field or something, to distinguish spaces from tabs from newlines...
   * should make a bunch of tests for this

@@ -78,15 +78,20 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
   }
 }
 
-pub fn chars_match(pattern: &[char], chars: &[char]) -> bool {
-  chars.len() >= pattern.len()
-    && match (0..pattern.len())
-      .map(|i| pattern[i] == chars[i])
+pub fn is_prefix(prefix: &[char], chars: &[char]) -> bool {
+  chars.len() >= prefix.len()
+    && match (0..prefix.len())
+      .map(|i| prefix[i] == chars[i])
       .reduce(|acc, e| acc && e)
     {
       None => true,
       Some(b) => b,
     }
+}
+
+pub fn is_string_prefix(prefix_str: String, chars: &[char]) -> bool {
+  let prefix_chars: Vec<char> = prefix_str.chars().collect();
+  is_prefix(&prefix_chars, chars)
 }
 
 enum PartialGSexp<DelimiterType: Delimiter, PrefixType: Prefix> {
@@ -199,23 +204,19 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
 
     let prefix_index = if consumed_index == char_index {
       (0..prefixes.len()).rev().find(|prefix_index| {
-        let marker: Vec<char> =
-          prefixes[*prefix_index].marker().chars().collect();
-        chars_match(&marker, &chars[char_index..])
+        is_string_prefix(prefixes[*prefix_index].marker(), &chars[char_index..])
       })
     } else {
       None
     };
 
     let matched_closing_delimiter = delimiters.iter().find(|delimiter| {
-      let closer: Vec<char> = delimiter.closer().chars().collect();
-      chars_match(&closer, &chars[char_index..])
+      is_string_prefix(delimiter.closer(), &chars[char_index..])
     });
     let maybe_open_delimiter = parser_state.get_open_delimiter();
     let was_expected_closer_matched = match &maybe_open_delimiter {
       Some(open_delimiter) => {
-        let closer: Vec<char> = open_delimiter.closer().chars().collect();
-        chars_match(&closer, &chars[char_index..])
+        is_string_prefix(open_delimiter.closer(), &chars[char_index..])
       }
       None => false,
     };
@@ -237,8 +238,7 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
     }
 
     let matched_opening_delimiter = delimiters.iter().rev().find(|delimiter| {
-      let opener: Vec<char> = delimiter.opener().chars().collect();
-      chars_match(&opener, &chars[char_index..])
+      is_string_prefix(delimiter.opener(), &chars[char_index..])
     });
     if !was_expected_closer_matched && matched_closing_delimiter.is_some() {}
     let whitespace = prefix_index.is_none()
@@ -376,6 +376,7 @@ mod tests {
     Braces,
     HashBraces,
     HashBrackets,
+    Pipe,
   }
 
   impl Delimiter for TestDelimiter {
@@ -386,6 +387,7 @@ mod tests {
         TestDelimiter::Braces => "{".to_string(),
         TestDelimiter::HashBrackets => "#[".to_string(),
         TestDelimiter::HashBraces => "#{".to_string(),
+        TestDelimiter::Pipe => "|".to_string(),
       }
     }
 
@@ -396,6 +398,7 @@ mod tests {
         TestDelimiter::Braces => "}".to_string(),
         TestDelimiter::HashBrackets => "]".to_string(),
         TestDelimiter::HashBraces => "}".to_string(),
+        TestDelimiter::Pipe => "|".to_string(),
       }
     }
 
@@ -406,16 +409,18 @@ mod tests {
         TestDelimiter::Braces => Some("#braces".to_string()),
         TestDelimiter::HashBrackets => Some("#hash-brackets".to_string()),
         TestDelimiter::HashBraces => Some("#hash-braces".to_string()),
+        TestDelimiter::Pipe => Some("#pipe".to_string()),
       }
     }
   }
 
-  const TEST_DELIMITERS: [TestDelimiter; 5] = [
+  const TEST_DELIMITERS: [TestDelimiter; 6] = [
     TestDelimiter::Parentheses,
     TestDelimiter::Brackets,
     TestDelimiter::Braces,
     TestDelimiter::HashBrackets,
     TestDelimiter::HashBraces,
+    TestDelimiter::Pipe,
   ];
 
   #[derive(Clone)]
@@ -488,17 +493,17 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_0() {
+  fn test_parse_empty() {
     assert_parse_eq!("", Sexp::Leaf("".to_string()));
   }
 
   #[test]
-  fn test_parse_1() {
+  fn test_parse_empty_list() {
     assert_parse_eq!("()", Sexp::List(vec![]));
   }
 
   #[test]
-  fn test_parse_2() {
+  fn test_parse_empty_brackets() {
     assert_parse_eq!(
       "[]",
       Sexp::List(vec![Sexp::Leaf("#brackets".to_string())])
@@ -506,17 +511,23 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_3() {
-    assert_parse_eq!("{}", Sexp::List(vec![Sexp::Leaf("#braces".to_string())]));
+  fn test_parse_nested_delimiters() {
+    assert_parse_eq!(
+      "{[]}",
+      Sexp::List(vec![
+        Sexp::Leaf("#braces".to_string()),
+        Sexp::List(vec![Sexp::Leaf("#brackets".to_string())])
+      ])
+    );
   }
 
   #[test]
-  fn test_parse_4() {
+  fn test_parse_solo_token() {
     assert_parse_eq!("hello!", Sexp::Leaf("hello!".to_string()));
   }
 
   #[test]
-  fn test_parse_5() {
+  fn test_parse_list() {
     assert_parse_eq!(
       "(+ 1 2)",
       Sexp::List(vec![
@@ -528,33 +539,27 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_6() {
+  fn test_parse_nested_list() {
     assert_parse_eq!(
-      "'(+ 1 2)",
+      "'(+ 1 2 (* 3 4))",
       Sexp::List(vec![
         Sexp::Leaf("quote".to_string()),
         Sexp::List(vec![
           Sexp::Leaf("+".to_string()),
           Sexp::Leaf("1".to_string()),
           Sexp::Leaf("2".to_string()),
+          Sexp::List(vec![
+            Sexp::Leaf("*".to_string()),
+            Sexp::Leaf("3".to_string()),
+            Sexp::Leaf("4".to_string()),
+          ]),
         ]),
       ])
     );
   }
 
   #[test]
-  fn test_parse_7() {
-    assert_parse_eq!(
-      "~'()",
-      Sexp::List(vec![
-        Sexp::Leaf("unquote".to_string()),
-        Sexp::List(vec![Sexp::Leaf("quote".to_string()), Sexp::List(vec![])]),
-      ])
-    );
-  }
-
-  #[test]
-  fn test_parse_8() {
+  fn test_parse_prefix() {
     assert_parse_eq!(
       "'a",
       Sexp::List(vec![
@@ -565,7 +570,7 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_9() {
+  fn test_parse_nested_prefixes() {
     assert_parse_eq!(
       "''a",
       Sexp::List(vec![
@@ -574,6 +579,59 @@ mod tests {
           Sexp::Leaf("quote".to_string()),
           Sexp::Leaf("a".to_string()),
         ]),
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_prefixes_and_delimiters() {
+    assert_parse_eq!(
+      "~'()",
+      Sexp::List(vec![
+        Sexp::Leaf("unquote".to_string()),
+        Sexp::List(vec![Sexp::Leaf("quote".to_string()), Sexp::List(vec![])]),
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_empty_symmetric_delimiter() {
+    assert_parse_eq!("||", Sexp::List(vec![Sexp::Leaf("#pipe".to_string())]));
+  }
+
+  #[test]
+  fn test_parse_filled_symmetric_delimiter() {
+    assert_parse_eq!(
+      "|x|",
+      Sexp::List(vec![
+        Sexp::Leaf("#pipe".to_string()),
+        Sexp::Leaf("x".to_string())
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_multiple_symmetric_delimiters() {
+    assert_parse_eq!(
+      "(|| x ||)",
+      Sexp::List(vec![
+        Sexp::List(vec![Sexp::Leaf("#pipe".to_string())]),
+        Sexp::Leaf("x".to_string()),
+        Sexp::List(vec![Sexp::Leaf("#pipe".to_string())])
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_nested_symmetric_delimiters() {
+    assert_parse_eq!(
+      "|(|x|)|",
+      Sexp::List(vec![
+        Sexp::Leaf("#pipe".to_string()),
+        Sexp::List(vec![Sexp::List(vec![
+          Sexp::Leaf("#pipe".to_string()),
+          Sexp::Leaf("x".to_string())
+        ])])
       ])
     );
   }
