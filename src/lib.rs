@@ -618,6 +618,38 @@ mod tests {
     );
   }
 
+  #[test]
+  fn test_parse_empty_string() {
+    assert_parse_eq!("\"\"", Sexp::Leaf("\"\"".to_string()));
+  }
+
+  #[test]
+  fn test_parse_string() {
+    assert_parse_eq!(
+      "\"hello world!\"",
+      Sexp::Leaf("\"hello world!\"".to_string())
+    );
+  }
+
+  #[test]
+  fn test_parse_string_inside_delimiter() {
+    assert_parse_eq!(
+      "(\"hello world!\" \"goodbye world!\")",
+      Sexp::List(vec![
+        Sexp::Leaf("\"hello world!\"".to_string()),
+        Sexp::Leaf("\"goodbye world!\"".to_string()),
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_delimiter_characters_inside_string() {
+    assert_parse_eq!(
+      "(\"])]]]]}}(\")",
+      Sexp::List(vec![Sexp::Leaf("\"])]]]]}}(\"".to_string()),])
+    );
+  }
+
   /*#[test]
   fn test_parse_empty_symmetric_delimiter() {
     assert_parse_eq!("||", Sexp::List(vec![Sexp::Leaf("#pipe".to_string())]));
