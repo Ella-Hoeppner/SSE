@@ -54,6 +54,29 @@ pub enum GSexp<DelimiterType: Delimiter, PrefixType: Prefix> {
   Leaf(String),
 }
 
+impl<DelimiterType: Delimiter, PrefixType: Prefix>
+  GSexp<DelimiterType, PrefixType>
+{
+  pub fn to_sexp(&self) -> Sexp {
+    match self {
+      GSexp::Leaf(token) => Sexp::Leaf(token.clone()),
+      GSexp::Prefixed(prefix, sub_expression) => {
+        Sexp::List(vec![Sexp::Leaf(prefix.tag()), sub_expression.to_sexp()])
+      }
+      GSexp::Delimited(delimiter, sub_expressions) => match delimiter.tag() {
+        Some(tag) => Sexp::List(
+          std::iter::once(Sexp::Leaf(tag))
+            .chain(sub_expressions.iter().map(|e| e.to_sexp()))
+            .collect(),
+        ),
+        None => {
+          Sexp::List(sub_expressions.iter().map(|e| e.to_sexp()).collect())
+        }
+      },
+    }
+  }
+}
+
 pub fn chars_match(pattern: &[char], chars: &[char]) -> bool {
   chars.len() >= pattern.len()
     && match (0..pattern.len())
@@ -424,6 +447,38 @@ mod tests {
 
   const TEST_PREFIXES: [TestPrefix; 2] =
     [TestPrefix::Quote, TestPrefix::Unquote];
+
+  type TestGSexp = GSexp<TestDelimiter, TestPrefix>;
+
+  #[test]
+  fn test_gsexp_to_sexp() {
+    assert_eq!(
+      TestGSexp::Leaf("hello".to_owned()).to_sexp(),
+      Sexp::Leaf("hello".to_owned())
+    );
+    assert_eq!(
+      TestGSexp::Prefixed(
+        TestPrefix::Quote,
+        Box::new(TestGSexp::Leaf("hello".to_owned()))
+      )
+      .to_sexp(),
+      Sexp::List(vec![
+        Sexp::Leaf("quote".to_owned()),
+        Sexp::Leaf("hello".to_owned())
+      ])
+    );
+    assert_eq!(
+      TestGSexp::Delimited(
+        TestDelimiter::Brackets,
+        vec![TestGSexp::Leaf("hello".to_owned())]
+      )
+      .to_sexp(),
+      Sexp::List(vec![
+        Sexp::Leaf("#brackets".to_owned()),
+        Sexp::Leaf("hello".to_owned())
+      ])
+    );
+  }
 
   #[test]
   fn test_parse() {
