@@ -480,69 +480,106 @@ mod tests {
     );
   }
 
+  macro_rules! assert_parse_eq {
+    ($string:literal, $sexp:expr) => {
+      let parsed_sexp = parse(&TEST_DELIMITERS, &TEST_PREFIXES, $string)
+        .expect("Failted to parse sexp");
+      assert_eq!(
+        $sexp, parsed_sexp,
+        "String {:?} was not parsed as expected.",
+        $string
+      );
+    };
+  }
+
   #[test]
-  fn test_parse() {
-    [
-      ("()", Sexp::List(vec![])),
-      ("[]", Sexp::List(vec![Sexp::Leaf("#brackets".to_string())])),
-      ("{}", Sexp::List(vec![Sexp::Leaf("#braces".to_string())])),
-      ("hello!", Sexp::Leaf("hello!".to_string())),
-      (
-        "(+ 1 2)",
+  fn test_parse_0() {
+    assert_parse_eq!("", Sexp::Leaf("".to_string()));
+  }
+
+  #[test]
+  fn test_parse_1() {
+    assert_parse_eq!("()", Sexp::List(vec![]));
+  }
+
+  #[test]
+  fn test_parse_2() {
+    assert_parse_eq!(
+      "[]",
+      Sexp::List(vec![Sexp::Leaf("#brackets".to_string())])
+    );
+  }
+
+  #[test]
+  fn test_parse_3() {
+    assert_parse_eq!("{}", Sexp::List(vec![Sexp::Leaf("#braces".to_string())]));
+  }
+
+  #[test]
+  fn test_parse_4() {
+    assert_parse_eq!("hello!", Sexp::Leaf("hello!".to_string()));
+  }
+
+  #[test]
+  fn test_parse_5() {
+    assert_parse_eq!(
+      "(+ 1 2)",
+      Sexp::List(vec![
+        Sexp::Leaf("+".to_string()),
+        Sexp::Leaf("1".to_string()),
+        Sexp::Leaf("2".to_string()),
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_6() {
+    assert_parse_eq!(
+      "'(+ 1 2)",
+      Sexp::List(vec![
+        Sexp::Leaf("quote".to_string()),
         Sexp::List(vec![
           Sexp::Leaf("+".to_string()),
           Sexp::Leaf("1".to_string()),
           Sexp::Leaf("2".to_string()),
         ]),
-      ),
-      (
-        "'(+ 1 2)",
-        Sexp::List(vec![
-          Sexp::Leaf("quote".to_string()),
-          Sexp::List(vec![
-            Sexp::Leaf("+".to_string()),
-            Sexp::Leaf("1".to_string()),
-            Sexp::Leaf("2".to_string()),
-          ]),
-        ]),
-      ),
-      (
-        "~'()",
-        Sexp::List(vec![
-          Sexp::Leaf("unquote".to_string()),
-          Sexp::List(vec![Sexp::Leaf("quote".to_string()), Sexp::List(vec![])]),
-        ]),
-      ),
-      (
-        "'a",
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_7() {
+    assert_parse_eq!(
+      "~'()",
+      Sexp::List(vec![
+        Sexp::Leaf("unquote".to_string()),
+        Sexp::List(vec![Sexp::Leaf("quote".to_string()), Sexp::List(vec![])]),
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_8() {
+    assert_parse_eq!(
+      "'a",
+      Sexp::List(vec![
+        Sexp::Leaf("quote".to_string()),
+        Sexp::Leaf("a".to_string()),
+      ])
+    );
+  }
+
+  #[test]
+  fn test_parse_9() {
+    assert_parse_eq!(
+      "''a",
+      Sexp::List(vec![
+        Sexp::Leaf("quote".to_string()),
         Sexp::List(vec![
           Sexp::Leaf("quote".to_string()),
           Sexp::Leaf("a".to_string()),
         ]),
-      ),
-      (
-        "''a",
-        Sexp::List(vec![
-          Sexp::Leaf("quote".to_string()),
-          Sexp::List(vec![
-            Sexp::Leaf("quote".to_string()),
-            Sexp::Leaf("a".to_string()),
-          ]),
-        ]),
-      ),
-    ]
-    .into_iter()
-    .for_each(|(str, sexp)| {
-      match parse(&TEST_DELIMITERS, &TEST_PREFIXES, str) {
-        Ok(parsed_sexp) => assert_eq!(
-          sexp, parsed_sexp,
-          "String {:?} was not parsed as expected.",
-          str
-        ),
-        Err(e) => {
-          assert!(false, "Failed to parse string {:?}, got error {:?}", str, e)
-        }
-      };
-    });
+      ])
+    );
   }
 }

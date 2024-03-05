@@ -28,8 +28,6 @@ The goal in defining this new format is to provide a unified syntactic framework
 
 ## to do
 * make parser use `GSexp` internally
-* break `test_parse` into a bunch of different tests
-  * probably write a macro for this
 * `SyntaxTree::from_sexp`
   * Converts a pure-sexp back into `SyntaxTree`, given a set of prefix/delimiter types
     * will have to figure out how to handle cases where there are multiple delimiters/prefixes with the same tag...
