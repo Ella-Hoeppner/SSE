@@ -5,6 +5,7 @@ pub enum ParseError {
   UnmatchedCloser(String),
   MismatchedCloser(String, String),
   UnclosedOpener(String),
+  TrailingPrefix(String),
   UnclosedString,
 }
 
@@ -37,13 +38,13 @@ impl fmt::Display for Sexp {
   }
 }
 
-pub trait Delimiter {
+pub trait Delimiter: Clone {
   fn opener(&self) -> String;
   fn closer(&self) -> String;
   fn tag(&self) -> Option<String>;
 }
 
-pub trait Prefix {
+pub trait Prefix: Clone {
   fn marker(&self) -> String;
   fn tag(&self) -> String;
 }
@@ -155,6 +156,24 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
       }
     }
   }
+  pub fn get_open_delimiter(&self) -> Option<DelimiterType> {
+    match self.partial_expression.last() {
+      Some(PartialGSexp::Delimited(delimiter_type, _)) => {
+        Some(delimiter_type.clone())
+      }
+      _ => None,
+    }
+  }
+  pub fn get_open_partial(
+    &self,
+  ) -> Option<&PartialGSexp<DelimiterType, PrefixType>> {
+    self.partial_expression.last()
+  }
+  pub fn take_last_completed_expression(
+    &mut self,
+  ) -> Option<GSexp<DelimiterType, PrefixType>> {
+    self.expressions.pop()
+  }
 }
 
 pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
@@ -162,12 +181,12 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
   prefixes: &[PrefixType],
   chars: Vec<char>,
 ) -> Result<Sexp, ParseError> {
-  /*if chars.is_empty() {
+  if chars.is_empty() {
     return Ok(Sexp::Leaf("".to_string()));
   }
 
-  let parser_state: &mut ParserState = &mut ParserState::new();
-  let mut expression_opened: bool = false;
+  let parser_state: &mut ParserState<DelimiterType, PrefixType> =
+    &mut ParserState::new();
   let mut char_index: usize = 0;
   let mut consumed_index: usize = 0;
 
@@ -192,20 +211,25 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
       let closer: Vec<char> = delimiter.closer().chars().collect();
       chars_match(&closer, &chars[char_index..])
     });
-    let open_list = parser_state.get_open_list();
-    let was_expected_closer_matched = match &open_list {
-      Some((_, closer)) => chars_match(&closer, &chars[char_index..]),
+    let maybe_open_delimiter = parser_state.get_open_delimiter();
+    let was_expected_closer_matched = match &maybe_open_delimiter {
+      Some(open_delimiter) => {
+        let closer: Vec<char> = open_delimiter.closer().chars().collect();
+        chars_match(&closer, &chars[char_index..])
+      }
       None => false,
     };
     match &matched_closing_delimiter {
       None => (),
-      Some(delimiter) => match open_list {
-        None => return Err(ParseError::UnmatchedCloser(delimiter.closer())),
-        Some((opener, _)) => {
+      Some(closing_delimiter) => match &maybe_open_delimiter {
+        None => {
+          return Err(ParseError::UnmatchedCloser(closing_delimiter.closer()))
+        }
+        Some(opening_delimiter) => {
           if !was_expected_closer_matched {
             return Err(ParseError::MismatchedCloser(
-              opener.iter().collect(),
-              delimiter.closer(),
+              opening_delimiter.opener(),
+              closing_delimiter.closer(),
             ));
           }
         }
@@ -230,16 +254,11 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
       // If consumption isn't up to the current index, and this character
       // indicates the previous token should end, add previous token to AST.
       parser_state
-        .insert_token(chars[consumed_index..char_index].iter().collect());
-      if whitespace {
-        // If this character is whitespace, indicating that this was the end of
-        // a terminal token rather than a closing delimiter, close any open
-        // prefixes.
-
-        parser_state.close_prefixes();
-      }
-      if !expression_opened {
-        return Ok(parser_state.finish());
+        .insert_leaf(chars[consumed_index..char_index].iter().collect());
+      if let Some(completed_expression) =
+        parser_state.take_last_completed_expression()
+      {
+        return Ok(completed_expression.to_sexp());
       }
     };
     if string_opener {
@@ -255,49 +274,39 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
         if string_char == '\\' {
           char_index += 1
         } else if string_char == '"' {
-          parser_state.insert_token(
+          parser_state.insert_leaf(
             chars[string_start_index..char_index + 1].iter().collect(),
           );
           break;
         }
       }
-      if !expression_opened {
-        return Ok(parser_state.finish());
+      if let Some(completed_expression) =
+        parser_state.take_last_completed_expression()
+      {
+        return Ok(completed_expression.to_sexp());
       }
     }
     // Handle the case where this character is the start of a prefix, opener,
     // or closer, and adjust the character index accordingly.
     char_index += match prefix_index {
       Some(i) => {
-        expression_opened = true;
         // If this is a prefix, add a list, with the tag of the prefix as the
         // first element of the list, to the AST.
-        let prefix_chars: Vec<char> = prefixes[i].marker().chars().collect();
-        let tag = prefixes[i].tag();
-        parser_state.open_prefix(char_index, &tag);
-        prefix_chars.len()
+        parser_state.open_prefix(prefixes[i].clone());
+        prefixes[i].marker().len()
       }
       None => match matched_opening_delimiter {
         Some(delimiter) => {
-          let opener: Vec<char> = delimiter.opener().chars().collect();
-          let closer: Vec<char> = delimiter.closer().chars().collect();
-          let tag = delimiter.tag();
-          expression_opened = true;
-          // If this is an opener, add a list, with the tag of the delimiter
-          // pair (if it has one) as the first element of the list, to the AST.
-          parser_state.open_list(
-            char_index,
-            opener.clone(),
-            closer.clone(),
-            &tag,
-          );
-          opener.len()
+          // If this is an opener, open a delimiter.
+          parser_state.open_delimiter(delimiter.clone());
+          delimiter.opener().len()
         }
         None => {
           if was_expected_closer_matched {
             // This unwrap is safe, because expected_closer_matched will only
             // be true if there is a list to close.
-            parser_state.close_list().unwrap().len()
+            parser_state.close_delimiter();
+            maybe_open_delimiter.unwrap().closer().len()
           } else {
             1
           }
@@ -314,8 +323,10 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
     {
       consumed_index = char_index;
     }
-    if expression_opened && parser_state.opening_stack.len() == 0 {
-      return Ok(parser_state.finish());
+    if let Some(completed_expression) =
+      parser_state.take_last_completed_expression()
+    {
+      return Ok(completed_expression.to_sexp());
     }
   }
 
@@ -324,19 +335,26 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
   // final leaf to the AST.
   if char_index >= chars.len() && consumed_index < char_index {
     parser_state
-      .insert_token(chars[consumed_index..chars.len()].iter().collect());
+      .insert_leaf(chars[consumed_index..chars.len()].iter().collect());
   }
-  parser_state.close_prefixes();
 
   // Throw an error if there are any open lists at the end of the string.
-  match parser_state.get_open_list() {
-    Some((opener, _)) => {
-      return Err(ParseError::UnclosedOpener(opener.iter().collect()))
-    }
-    None => (),
+  if let Some(open_partial) = parser_state.get_open_partial() {
+    return Err(match open_partial {
+      PartialGSexp::Prefixed(prefix) => {
+        ParseError::TrailingPrefix(prefix.marker())
+      }
+      PartialGSexp::Delimited(delimiter, _) => {
+        ParseError::UnclosedOpener(delimiter.opener())
+      }
+    });
   }
-  return Ok(parser_state.finish());*/
-  todo!()
+  Ok(
+    parser_state
+      .take_last_completed_expression()
+      .unwrap()
+      .to_sexp(),
+  )
 }
 
 pub fn parse<DelimiterType: Delimiter, PrefixType: Prefix>(
@@ -347,10 +365,11 @@ pub fn parse<DelimiterType: Delimiter, PrefixType: Prefix>(
   parse_chars(delimiters, prefixes, s.chars().collect())
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_macros)]
 mod tests {
   use super::*;
 
+  #[derive(Clone)]
   enum TestDelimiter {
     Parentheses,
     Brackets,
@@ -399,6 +418,7 @@ mod tests {
     TestDelimiter::HashBraces,
   ];
 
+  #[derive(Clone)]
   enum TestPrefix {
     Quote,
     Unquote,
