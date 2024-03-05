@@ -87,99 +87,73 @@ pub fn chars_match(pattern: &[char], chars: &[char]) -> bool {
       Some(b) => b,
     }
 }
-enum Opening {
-  Prefix,
-  List(Vec<char>, Vec<char>),
+
+enum PartialGSexp<DelimiterType: Delimiter, PrefixType: Prefix> {
+  Prefixed(PrefixType),
+  Delimited(DelimiterType, Vec<GSexp<DelimiterType, PrefixType>>),
 }
-struct ParserState {
-  expression_stack: Vec<Vec<Sexp>>,
-  opening_stack: Vec<(usize, Opening)>,
+struct ParserState<DelimiterType: Delimiter, PrefixType: Prefix> {
+  expressions: Vec<GSexp<DelimiterType, PrefixType>>,
+  partial_expression: Vec<PartialGSexp<DelimiterType, PrefixType>>,
 }
-impl ParserState {
-  pub fn new() -> ParserState {
+impl<DelimiterType: Delimiter, PrefixType: Prefix>
+  ParserState<DelimiterType, PrefixType>
+{
+  pub fn new() -> ParserState<DelimiterType, PrefixType> {
     ParserState {
-      expression_stack: vec![vec![]],
-      opening_stack: vec![],
+      expressions: vec![],
+      partial_expression: vec![],
     }
   }
-  fn peek_opening(&mut self) -> Option<&Opening> {
-    match self.opening_stack.last() {
-      Some((_, opening)) => Some(&opening),
-      None => None,
-    }
-  }
-  pub fn insert_token(&mut self, token: String) {
-    self.expression_stack[self.opening_stack.len()].push(Sexp::Leaf(token));
-  }
-  pub fn open_prefix(&mut self, char_index: usize, tag: &String) {
-    self.expression_stack.push(vec![]);
-    self.opening_stack.push((char_index, Opening::Prefix));
-    self.insert_token(tag.clone());
-  }
-  pub fn close_expression(&mut self) {
-    let top_expression = self.expression_stack.pop().unwrap();
-    let expression_count = self.expression_stack.len();
-    self.expression_stack[expression_count - 1]
-      .push(Sexp::List(top_expression));
-  }
-  pub fn close_prefixes(&mut self) {
-    while let Some(next_opening) = self.peek_opening() {
-      match next_opening {
-        Opening::Prefix => {
-          self.close_expression();
-          self.opening_stack.pop();
+  pub fn insert_gsexp(&mut self, mut gsexp: GSexp<DelimiterType, PrefixType>) {
+    loop {
+      if let Some(next_expressions) = self.partial_expression.pop() {
+        match next_expressions {
+          PartialGSexp::Prefixed(prefix_type) => {
+            gsexp = GSexp::Prefixed(prefix_type, Box::new(gsexp))
+          }
+          PartialGSexp::Delimited(delimiter_type, mut sub_expressions) => {
+            sub_expressions.push(gsexp);
+            self
+              .partial_expression
+              .push(PartialGSexp::Delimited(delimiter_type, sub_expressions));
+            break;
+          }
         }
-        Opening::List(_, _) => break,
+      } else {
+        self.expressions.push(gsexp);
+        break;
       }
     }
   }
-  pub fn open_list(
-    &mut self,
-    char_index: usize,
-    opener: Vec<char>,
-    closer: Vec<char>,
-    tag: &Option<String>,
-  ) {
-    self.expression_stack.push(vec![]);
+  pub fn insert_leaf(&mut self, token: String) {
+    self.insert_gsexp(GSexp::Leaf(token));
+  }
+  pub fn open_prefix(&mut self, prefix_type: PrefixType) {
     self
-      .opening_stack
-      .push((char_index, Opening::List(opener, closer)));
-    match tag.clone() {
-      Some(tag) => self.insert_token(tag),
-      None => (),
+      .partial_expression
+      .push(PartialGSexp::Prefixed(prefix_type));
+  }
+  pub fn open_delimiter(&mut self, delimiter_type: DelimiterType) {
+    self
+      .partial_expression
+      .push(PartialGSexp::Delimited(delimiter_type, vec![]));
+  }
+  pub fn close_delimiter(&mut self) {
+    match self.partial_expression.pop() {
+      Some(PartialGSexp::Delimited(delimiter_type, sub_expressions)) => {
+        self.insert_gsexp(GSexp::Delimited(delimiter_type, sub_expressions))
+      }
+      Some(PartialGSexp::Prefixed(_)) => panic!(
+        "tried to close delimiter with an open prefix on the top of \
+        partial_expression stack"
+      ),
+      None => {
+        panic!(
+          "tried to close delimiter with nothing on partial_expression stack"
+        )
+      }
     }
-  }
-  pub fn close_list(&mut self) -> Option<Vec<char>> {
-    self.close_prefixes();
-    self.close_expression();
-    let closer = match self.opening_stack.pop() {
-      Some((_, opening)) => match opening {
-        Opening::List(_, closer) => Some(closer),
-        Opening::Prefix => unreachable!(),
-      },
-      None => None,
-    };
-    self.close_prefixes();
-    closer
-  }
-  pub fn get_open_list(&mut self) -> Option<(Vec<char>, Vec<char>)> {
-    self
-      .opening_stack
-      .iter()
-      .rev()
-      .find_map(|(_, opening)| match opening {
-        Opening::Prefix => None,
-        Opening::List(opener, closer) => Some((opener.clone(), closer.clone())),
-      })
-  }
-  pub fn finish(&mut self) -> Sexp {
-    self
-      .expression_stack
-      .pop()
-      .unwrap()
-      .first()
-      .unwrap()
-      .clone()
   }
 }
 
@@ -188,7 +162,7 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
   prefixes: &[PrefixType],
   chars: Vec<char>,
 ) -> Result<Sexp, ParseError> {
-  if chars.is_empty() {
+  /*if chars.is_empty() {
     return Ok(Sexp::Leaf("".to_string()));
   }
 
@@ -361,7 +335,8 @@ pub fn parse_chars<DelimiterType: Delimiter, PrefixType: Prefix>(
     }
     None => (),
   }
-  return Ok(parser_state.finish());
+  return Ok(parser_state.finish());*/
+  todo!()
 }
 
 pub fn parse<DelimiterType: Delimiter, PrefixType: Prefix>(
