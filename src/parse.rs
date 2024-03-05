@@ -143,17 +143,25 @@ impl ParserState {
   }
 }
 
-pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, ParseError> {
+pub trait Delimiter {
+  fn delimiter_strings(&self) -> (String, String);
+  fn delimiter_tag(&self) -> Option<String>;
+}
+
+pub fn parse_chars<DelimiterType: Delimiter>(
+  delimiters: &[DelimiterType],
+  chars: Vec<char>,
+) -> Result<Sexp, ParseError> {
   if chars.is_empty() {
     return Ok(Sexp::Leaf("nil".to_string()));
   }
 
   let delimiters: Vec<(&[char], &[char], Option<String>)> = vec![
     (&['('], &[')'], None),
-    (&['['], &[']'], Some("#list".to_string())),
-    (&['{'], &['}'], Some("#hashmap".to_string())),
-    (&['#', '{'], &['}'], Some("#hashset".to_string())),
-    (&['#', '['], &[']'], Some("#ordered-hashmap".to_string())),
+    (&['['], &[']'], Some("#brackets".to_string())),
+    (&['{'], &['}'], Some("#braces".to_string())),
+    (&['#', '{'], &['}'], Some("#hash-braces".to_string())),
+    (&['#', '['], &[']'], Some("#hash-brackets".to_string())),
   ];
   let prefixes: Vec<(&[char], String)> = vec![
     (&['\''], "quote".to_string()),
@@ -324,72 +332,117 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, ParseError> {
   return Ok(parser_state.finish());
 }
 
-pub fn parse(s: &str) -> Result<Sexp, ParseError> {
-  parse_chars(s.chars().collect())
+pub fn parse<DelimiterType: Delimiter>(
+  delimiters: &[DelimiterType],
+  s: &str,
+) -> Result<Sexp, ParseError> {
+  parse_chars(delimiters, s.chars().collect())
 }
 
-#[test]
-fn test_parse() {
-  [
-    ("()", Sexp::List(vec![])),
-    ("[]", Sexp::List(vec![Sexp::Leaf("list".to_string())])),
-    ("{}", Sexp::List(vec![Sexp::Leaf("hashmap".to_string())])),
-    ("hello!", Sexp::Leaf("hello!".to_string())),
-    (
-      "(+ 1 2)",
-      Sexp::List(vec![
-        Sexp::Leaf("+".to_string()),
-        Sexp::Leaf("1".to_string()),
-        Sexp::Leaf("2".to_string()),
-      ]),
-    ),
-    (
-      "'(+ 1 2)",
-      Sexp::List(vec![
-        Sexp::Leaf("quote".to_string()),
+mod tests {
+  use super::*;
+
+  enum TestDelimiter {
+    Parentheses,
+    Brackets,
+    Braces,
+    HashBraces,
+    HashBrackets,
+  }
+
+  impl Delimiter for TestDelimiter {
+    fn delimiter_strings(&self) -> (String, String) {
+      match self {
+        TestDelimiter::Parentheses => ("(".to_string(), ")".to_string()),
+        TestDelimiter::Brackets => ("[".to_string(), "]".to_string()),
+        TestDelimiter::Braces => ("{".to_string(), "}".to_string()),
+        TestDelimiter::HashBrackets => ("#[".to_string(), "]".to_string()),
+        TestDelimiter::HashBraces => ("#{".to_string(), "}".to_string()),
+      }
+    }
+
+    fn delimiter_tag(&self) -> Option<String> {
+      match self {
+        TestDelimiter::Parentheses => None,
+        TestDelimiter::Brackets => Some("#brackets".to_string()),
+        TestDelimiter::Braces => Some("#braces".to_string()),
+        TestDelimiter::HashBrackets => Some("#hash-brackets".to_string()),
+        TestDelimiter::HashBraces => Some("#hash-braces".to_string()),
+      }
+    }
+  }
+
+  const TEST_DELIMITERS: [TestDelimiter; 5] = [
+    TestDelimiter::Parentheses,
+    TestDelimiter::Brackets,
+    TestDelimiter::Braces,
+    TestDelimiter::HashBrackets,
+    TestDelimiter::HashBraces,
+  ];
+
+  #[test]
+  fn test_parse() {
+    [
+      ("()", Sexp::List(vec![])),
+      ("[]", Sexp::List(vec![Sexp::Leaf("#brackets".to_string())])),
+      ("{}", Sexp::List(vec![Sexp::Leaf("#braces".to_string())])),
+      ("hello!", Sexp::Leaf("hello!".to_string())),
+      (
+        "(+ 1 2)",
         Sexp::List(vec![
           Sexp::Leaf("+".to_string()),
           Sexp::Leaf("1".to_string()),
           Sexp::Leaf("2".to_string()),
         ]),
-      ]),
-    ),
-    (
-      "~'()",
-      Sexp::List(vec![
-        Sexp::Leaf("unquote".to_string()),
-        Sexp::List(vec![Sexp::Leaf("quote".to_string()), Sexp::List(vec![])]),
-      ]),
-    ),
-    (
-      "'a",
-      Sexp::List(vec![
-        Sexp::Leaf("quote".to_string()),
-        Sexp::Leaf("a".to_string()),
-      ]),
-    ),
-    (
-      "''a",
-      Sexp::List(vec![
-        Sexp::Leaf("quote".to_string()),
+      ),
+      (
+        "'(+ 1 2)",
+        Sexp::List(vec![
+          Sexp::Leaf("quote".to_string()),
+          Sexp::List(vec![
+            Sexp::Leaf("+".to_string()),
+            Sexp::Leaf("1".to_string()),
+            Sexp::Leaf("2".to_string()),
+          ]),
+        ]),
+      ),
+      (
+        "~'()",
+        Sexp::List(vec![
+          Sexp::Leaf("unquote".to_string()),
+          Sexp::List(vec![Sexp::Leaf("quote".to_string()), Sexp::List(vec![])]),
+        ]),
+      ),
+      (
+        "'a",
         Sexp::List(vec![
           Sexp::Leaf("quote".to_string()),
           Sexp::Leaf("a".to_string()),
         ]),
-      ]),
-    ),
-  ]
-  .into_iter()
-  .for_each(|(str, sexp)| {
-    match parse(str) {
-      Ok(parsed_sexp) => assert_eq!(
-        sexp, parsed_sexp,
-        "String {:?} was not parsed as expected.",
-        str
       ),
-      Err(e) => {
-        assert!(false, "Failed to parse string {:?}, got error {:?}", str, e)
-      }
-    };
-  });
+      (
+        "''a",
+        Sexp::List(vec![
+          Sexp::Leaf("quote".to_string()),
+          Sexp::List(vec![
+            Sexp::Leaf("quote".to_string()),
+            Sexp::Leaf("a".to_string()),
+          ]),
+        ]),
+      ),
+    ]
+    .into_iter()
+    .for_each(|(str, sexp)| {
+      match parse(&TEST_DELIMITERS, str) {
+        Ok(parsed_sexp) => assert_eq!(
+          sexp, parsed_sexp,
+          "String {:?} was not parsed as expected.",
+          str
+        ),
+        Err(e) => {
+          assert!(false, "Failed to parse string {:?}, got error {:?}", str, e)
+        }
+      };
+    });
+  }
 }
