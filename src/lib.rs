@@ -39,18 +39,20 @@ impl fmt::Display for Sexp {
   }
 }
 
-pub trait Delimiter: Clone + Debug {
+pub trait Syntax: Clone + Debug {
+  fn tag(&self) -> String;
+}
+
+pub trait Delimiter: Syntax {
   fn opener(&self) -> String;
   fn closer(&self) -> String;
-  fn tag(&self) -> Option<String>;
   fn is_symmetric(&self) -> bool {
     self.opener() == self.closer()
   }
 }
 
-pub trait Prefix: Clone + Debug {
+pub trait Prefix: Syntax {
   fn marker(&self) -> String;
-  fn tag(&self) -> String;
 }
 
 #[derive(Debug)]
@@ -178,16 +180,16 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
       GSexp::Prefixed(prefix, sub_expression) => {
         Sexp::List(vec![Sexp::Leaf(prefix.tag()), sub_expression.to_sexp()])
       }
-      GSexp::Delimited(delimiter, sub_expressions) => match delimiter.tag() {
-        Some(tag) => Sexp::List(
+      GSexp::Delimited(delimiter, sub_expressions) => {
+        let tag = delimiter.tag();
+        Sexp::List(if tag.is_empty() {
+          sub_expressions.iter().map(|e| e.to_sexp()).collect()
+        } else {
           std::iter::once(Sexp::Leaf(tag))
             .chain(sub_expressions.iter().map(|e| e.to_sexp()))
-            .collect(),
-        ),
-        None => {
-          Sexp::List(sub_expressions.iter().map(|e| e.to_sexp()).collect())
-        }
-      },
+            .collect()
+        })
+      }
     }
   }
   pub fn parse(
@@ -398,7 +400,12 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
 pub struct SimpleDelimiter {
   opener: String,
   closer: String,
-  tag: Option<String>,
+  tag: String,
+}
+impl Syntax for SimpleDelimiter {
+  fn tag(&self) -> String {
+    self.tag.clone()
+  }
 }
 impl Delimiter for SimpleDelimiter {
   fn opener(&self) -> String {
@@ -408,27 +415,24 @@ impl Delimiter for SimpleDelimiter {
   fn closer(&self) -> String {
     self.closer.clone()
   }
-
-  fn tag(&self) -> Option<String> {
-    self.tag.clone()
-  }
 }
 #[derive(Clone, Debug)]
 pub struct SimplePrefix {
   marker: String,
   tag: String,
 }
-impl Prefix for SimplePrefix {
-  fn marker(&self) -> String {
-    self.marker.clone()
-  }
-
+impl Syntax for SimplePrefix {
   fn tag(&self) -> String {
     self.tag.clone()
   }
 }
+impl Prefix for SimplePrefix {
+  fn marker(&self) -> String {
+    self.marker.clone()
+  }
+}
 pub fn generate_simple_delimiters_and_prefixes(
-  delimiter_strings: Vec<(&str, &str, Option<&str>)>,
+  delimiter_strings: Vec<(&str, &str, &str)>,
   prefix_strings: Vec<(&str, &str)>,
 ) -> (Vec<SimpleDelimiter>, Vec<SimplePrefix>) {
   (
@@ -437,7 +441,7 @@ pub fn generate_simple_delimiters_and_prefixes(
       .map(|(opener, closer, tag)| SimpleDelimiter {
         opener: opener.to_string(),
         closer: closer.to_string(),
-        tag: tag.map(|s| s.to_string()),
+        tag: tag.to_string(),
       })
       .collect(),
     prefix_strings
@@ -464,6 +468,19 @@ mod tests {
     Pipe,
   }
 
+  impl Syntax for TestDelimiter {
+    fn tag(&self) -> String {
+      match self {
+        TestDelimiter::Parentheses => "".to_string(),
+        TestDelimiter::Brackets => "#brackets".to_string(),
+        TestDelimiter::Braces => "#braces".to_string(),
+        TestDelimiter::HashBrackets => "#hash-brackets".to_string(),
+        TestDelimiter::HashBraces => "#hash-braces".to_string(),
+        TestDelimiter::Pipe => "#pipe".to_string(),
+      }
+    }
+  }
+
   impl Delimiter for TestDelimiter {
     fn opener(&self) -> String {
       match self {
@@ -486,17 +503,6 @@ mod tests {
         TestDelimiter::Pipe => "|".to_string(),
       }
     }
-
-    fn tag(&self) -> Option<String> {
-      match self {
-        TestDelimiter::Parentheses => None,
-        TestDelimiter::Brackets => Some("#brackets".to_string()),
-        TestDelimiter::Braces => Some("#braces".to_string()),
-        TestDelimiter::HashBrackets => Some("#hash-brackets".to_string()),
-        TestDelimiter::HashBraces => Some("#hash-braces".to_string()),
-        TestDelimiter::Pipe => Some("#pipe".to_string()),
-      }
-    }
   }
 
   const TEST_DELIMITERS: [TestDelimiter; 6] = [
@@ -514,18 +520,20 @@ mod tests {
     Unquote,
   }
 
+  impl Syntax for TestPrefix {
+    fn tag(&self) -> String {
+      match self {
+        TestPrefix::Quote => "quote".to_string(),
+        TestPrefix::Unquote => "unquote".to_string(),
+      }
+    }
+  }
+
   impl Prefix for TestPrefix {
     fn marker(&self) -> String {
       match self {
         TestPrefix::Quote => "'".to_string(),
         TestPrefix::Unquote => "~".to_string(),
-      }
-    }
-
-    fn tag(&self) -> String {
-      match self {
-        TestPrefix::Quote => "quote".to_string(),
-        TestPrefix::Unquote => "unquote".to_string(),
       }
     }
   }
@@ -752,7 +760,7 @@ mod tests {
   #[test]
   fn test_ambiguous_delimiters() {
     assert_parameterized_parse_eq!(
-      vec![("(", ")", None), ("((", "))", Some("#double-parens"))],
+      vec![("(", ")", ""), ("((", "))", "#double-parens")],
       vec![],
       "(())",
       Sexp::List(vec![Sexp::Leaf("#double-parens".to_string())])
@@ -762,7 +770,7 @@ mod tests {
   #[test]
   fn test_nested_ambiguous_delimiters() {
     assert_parameterized_parse_eq!(
-      vec![("(", ")", None), ("((", "))", Some("#double-parens"))],
+      vec![("(", ")", ""), ("((", "))", "#double-parens")],
       vec![],
       "((()))",
       Sexp::List(vec![

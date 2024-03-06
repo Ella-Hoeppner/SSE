@@ -35,10 +35,6 @@ The goal in defining this new format is to provide a unified syntactic framework
 * Parser should operate over a &str or at least a String, rather than a Vec<char>
 * `GSexp::from_sexp`
   * Converts a pure-sexp back into `GSexp`, given a set of prefix/delimiter types
-    * will have to figure out how to handle cases where there are multiple delimiters/prefixes with the same tag...
-      * acutally maybe just don't allow duplicate tags?
-      * could just always use the first one, but then converting back to GSE would be lossy
-      * I guess when there are multiple options for which delimiter/prefix to use, each element could store an index for which one it came from
 * keep track of character indeces for each element, such that the original string can be recreated losslessly
   * I guess maybe we also need a "trailing whitespace" field or something, to distinguish spaces from tabs from newlines...
   * should make a bunch of tests for this
