@@ -41,6 +41,7 @@ impl fmt::Display for Sexp {
 
 pub trait Syntax: Clone + Debug {
   fn tag(&self) -> String;
+  fn allowed_tags(&self) -> Vec<String>;
 }
 
 pub trait Delimiter: Syntax {
@@ -401,10 +402,15 @@ pub struct SimpleDelimiter {
   opener: String,
   closer: String,
   tag: String,
+  allowed_tags: Vec<String>,
 }
 impl Syntax for SimpleDelimiter {
   fn tag(&self) -> String {
     self.tag.clone()
+  }
+
+  fn allowed_tags(&self) -> Vec<String> {
+    self.allowed_tags.clone()
   }
 }
 impl Delimiter for SimpleDelimiter {
@@ -420,10 +426,15 @@ impl Delimiter for SimpleDelimiter {
 pub struct SimplePrefix {
   marker: String,
   tag: String,
+  allowed_tags: Vec<String>,
 }
 impl Syntax for SimplePrefix {
   fn tag(&self) -> String {
     self.tag.clone()
+  }
+
+  fn allowed_tags(&self) -> Vec<String> {
+    self.allowed_tags.clone()
   }
 }
 impl Prefix for SimplePrefix {
@@ -431,10 +442,15 @@ impl Prefix for SimplePrefix {
     self.marker.clone()
   }
 }
-pub fn generate_simple_delimiters_and_prefixes(
+pub fn generate_contextless_delimiters_and_prefixes(
   delimiter_strings: Vec<(&str, &str, &str)>,
   prefix_strings: Vec<(&str, &str)>,
 ) -> (Vec<SimpleDelimiter>, Vec<SimplePrefix>) {
+  let all_tags: Vec<String> = delimiter_strings
+    .iter()
+    .map(|(_, _, tag)| tag.to_string())
+    .chain(prefix_strings.iter().map(|(_, tag)| tag.to_string()))
+    .collect();
   (
     delimiter_strings
       .into_iter()
@@ -442,6 +458,7 @@ pub fn generate_simple_delimiters_and_prefixes(
         opener: opener.to_string(),
         closer: closer.to_string(),
         tag: tag.to_string(),
+        allowed_tags: all_tags.clone(),
       })
       .collect(),
     prefix_strings
@@ -449,6 +466,31 @@ pub fn generate_simple_delimiters_and_prefixes(
       .map(|(marker, tag)| SimplePrefix {
         marker: marker.to_string(),
         tag: tag.to_string(),
+        allowed_tags: all_tags.clone(),
+      })
+      .collect(),
+  )
+}
+pub fn generate_contextful_delimiters_and_prefixes(
+  delimiter_strings: Vec<(&str, &str, &str, Vec<&str>)>,
+  prefix_strings: Vec<(&str, &str, Vec<&str>)>,
+) -> (Vec<SimpleDelimiter>, Vec<SimplePrefix>) {
+  (
+    delimiter_strings
+      .into_iter()
+      .map(|(opener, closer, tag, allowed_tags)| SimpleDelimiter {
+        opener: opener.to_string(),
+        closer: closer.to_string(),
+        tag: tag.to_string(),
+        allowed_tags: allowed_tags.iter().map(|str| str.to_string()).collect(),
+      })
+      .collect(),
+    prefix_strings
+      .into_iter()
+      .map(|(marker, tag, allowed_tags)| SimplePrefix {
+        marker: marker.to_string(),
+        tag: tag.to_string(),
+        allowed_tags: allowed_tags.iter().map(|str| str.to_string()).collect(),
       })
       .collect(),
   )
@@ -478,6 +520,19 @@ mod tests {
         TestDelimiter::HashBraces => "#hash-braces".to_string(),
         TestDelimiter::Pipe => "#pipe".to_string(),
       }
+    }
+
+    fn allowed_tags(&self) -> Vec<String> {
+      vec![
+        "".to_string(),
+        "#brackets".to_string(),
+        "#braces".to_string(),
+        "#hash-brackets".to_string(),
+        "#hash-braces".to_string(),
+        "#pipe".to_string(),
+        "quote".to_string(),
+        "unquote".to_string(),
+      ]
     }
   }
 
@@ -527,6 +582,19 @@ mod tests {
         TestPrefix::Unquote => "unquote".to_string(),
       }
     }
+
+    fn allowed_tags(&self) -> Vec<String> {
+      vec![
+        "".to_string(),
+        "#brackets".to_string(),
+        "#braces".to_string(),
+        "#hash-brackets".to_string(),
+        "#hash-braces".to_string(),
+        "#pipe".to_string(),
+        "quote".to_string(),
+        "unquote".to_string(),
+      ]
+    }
   }
 
   impl Prefix for TestPrefix {
@@ -560,7 +628,7 @@ mod tests {
   macro_rules! assert_parameterized_parse_eq {
     ($delimiters:expr, $prefixes:expr, $string:literal, $sexp:expr) => {
       let (delimiters, prefixes) =
-        generate_simple_delimiters_and_prefixes($delimiters, $prefixes);
+        generate_contextless_delimiters_and_prefixes($delimiters, $prefixes);
       let gsexp: GSexp<SimpleDelimiter, SimplePrefix> =
         GSexp::parse(&delimiters, &prefixes, $string)
           .expect("Failed to parse string");
@@ -856,6 +924,27 @@ mod tests {
           Sexp::Leaf("x".to_string())
         ])])
       ])
+    );
+  }
+
+  #[test]
+  fn test_contextful_delimiters() {
+    let (delimiters, prefixes) = generate_contextful_delimiters_and_prefixes(
+      vec![
+        ("(", ")", "", vec!["#brackets"]),
+        ("[", "]", "#brackets", vec![""]),
+      ],
+      vec![],
+    );
+    let gsexp: GSexp<SimpleDelimiter, SimplePrefix> =
+      GSexp::parse(&delimiters, &prefixes, "([))())))))(])")
+        .expect("Failed to parse string");
+    assert_eq!(
+      gsexp.to_sexp(),
+      Sexp::List(vec![Sexp::List(vec![
+        Sexp::Leaf("#brackets".to_string()),
+        Sexp::Leaf("))())))))(".to_string())
+      ])])
     );
   }
 }
