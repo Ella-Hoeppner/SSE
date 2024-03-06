@@ -43,6 +43,9 @@ pub trait Delimiter: Clone + Debug {
   fn opener(&self) -> String;
   fn closer(&self) -> String;
   fn tag(&self) -> Option<String>;
+  fn is_symmetric(&self) -> bool {
+    self.opener() == self.closer()
+  }
 }
 
 pub trait Prefix: Clone + Debug {
@@ -247,10 +250,15 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
         None => (),
         Some(closing_delimiter) => match &maybe_open_delimiter {
           None => {
-            return Err(ParseError::UnmatchedCloser(closing_delimiter.closer()))
+            if !closing_delimiter.is_symmetric() {
+              return Err(ParseError::UnmatchedCloser(
+                closing_delimiter.closer(),
+              ));
+            }
           }
           Some(opening_delimiter) => {
-            if !was_expected_closer_matched {
+            if !was_expected_closer_matched && !closing_delimiter.is_symmetric()
+            {
               return Err(ParseError::MismatchedCloser(
                 opening_delimiter.opener(),
                 closing_delimiter.closer(),
@@ -264,7 +272,10 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
         delimiters_by_opener_size.iter().find(|delimiter| {
           is_string_prefix(delimiter.opener(), &chars[char_index..])
         });
-      if !was_expected_closer_matched && matched_closing_delimiter.is_some() {
+      if !was_expected_closer_matched
+        && matched_closing_delimiter.is_some()
+        && !matched_closing_delimiter.unwrap().is_symmetric()
+      {
         return Err(ParseError::MismatchedCloser(
           maybe_open_delimiter.unwrap().opener(),
           matched_closing_delimiter.unwrap().closer(),
@@ -324,23 +335,23 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
           parser_state.open_prefix(prefix.clone());
           prefix.marker().len()
         }
-        None => match matched_opening_delimiter {
-          Some(delimiter) => {
-            // If this is an opener, open a delimiter.
-            parser_state.open_delimiter(delimiter.clone());
-            delimiter.opener().len()
-          }
-          None => {
-            if was_expected_closer_matched {
-              // This unwrap is safe, because expected_closer_matched will only
-              // be true if there is a list to close.
-              parser_state.close_delimiter();
-              maybe_open_delimiter.unwrap().closer().len()
-            } else {
-              1
+        None => {
+          if was_expected_closer_matched {
+            // This unwrap is safe, because was_expected_closer_matched will
+            // only be true if there is a list to close.
+            parser_state.close_delimiter();
+            maybe_open_delimiter.unwrap().closer().len()
+          } else {
+            match matched_opening_delimiter {
+              Some(delimiter) => {
+                // If this is an opener, open a delimiter.
+                parser_state.open_delimiter(delimiter.clone());
+                delimiter.opener().len()
+              }
+              None => 1,
             }
           }
-        },
+        }
       };
       // Catch the consumption up to the current position, if the current
       // character matched with something for which that should be done.
@@ -384,7 +395,7 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
 }
 
 #[derive(Clone, Debug)]
-struct SimpleDelimiter {
+pub struct SimpleDelimiter {
   opener: String,
   closer: String,
   tag: Option<String>,
@@ -403,7 +414,7 @@ impl Delimiter for SimpleDelimiter {
   }
 }
 #[derive(Clone, Debug)]
-struct SimplePrefix {
+pub struct SimplePrefix {
   marker: String,
   tag: String,
 }
@@ -416,7 +427,7 @@ impl Prefix for SimplePrefix {
     self.tag.clone()
   }
 }
-fn generate_simple_delimiters_and_prefixes(
+pub fn generate_simple_delimiters_and_prefixes(
   delimiter_strings: Vec<(&str, &str, Option<&str>)>,
   prefix_strings: Vec<(&str, &str)>,
 ) -> (Vec<SimpleDelimiter>, Vec<SimplePrefix>) {
@@ -790,7 +801,7 @@ mod tests {
     );
   }
 
-  /*#[test]
+  #[test]
   fn test_parse_empty_symmetric_delimiter() {
     assert_parse_eq!("||", Sexp::List(vec![Sexp::Leaf("#pipe".to_string())]));
   }
@@ -803,6 +814,14 @@ mod tests {
         Sexp::Leaf("#pipe".to_string()),
         Sexp::Leaf("x".to_string())
       ])
+    );
+  }
+
+  #[test]
+  fn test_parse_symmetric_delimiter_inside_asymmetric_delimiter() {
+    assert_parse_eq!(
+      "(||)",
+      Sexp::List(vec![Sexp::List(vec![Sexp::Leaf("#pipe".to_string()),]),])
     );
   }
 
@@ -830,5 +849,5 @@ mod tests {
         ])])
       ])
     );
-  }*/
+  }
 }

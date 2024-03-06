@@ -27,9 +27,8 @@ This project aims to establish a new text format, called "GSE" for **G**eneraliz
 The goal in defining this new format is to provide a unified syntactic framework that can be shared between all S-expression based languages. As such, GSE can provide a foundation for shared tooling between different languages that abstracts away minor details like what kind of prefix operators or delimiters are available in a language. GSE will be able to encapsulate the syntax of most existing Lisps, including Clojure, Scheme, and Common Lisp, but the main purpose of GSE is to provide a convenient shared syntactic framework for future languages. Specfically, a core goal of GSE is to make it easy to define alternative syntaxes for non-lispy languages that can be easily transpiled to and from the original syntax, allowing these languages to gain the benefits of Lisp syntax, including things like macros, structural editing, and, potentially, [visual editing](https://github.com/Ella-Hoeppner/Vlojure).
 
 ## to do
-* Support delimiters that use the same character for opener and closer, e.g. `|...|` like in rust
 * Make delimiters and prefixes context-sensitive, i.e. what delimiters/prefixes are available depends on what delimiter/prefix the parser inside of
-* Support escape characters inside delimiters
+* Support escape characters inside delimiters/prefix
   * This should be determined by a function in the `Delimiter` and `Prefix` trait
 * Handle strings as a special case of delimiter
   * will just be a symmetric delimiter with `"` as the opener and closer, and `\` as an escape character
