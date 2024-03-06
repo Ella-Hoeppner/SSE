@@ -197,6 +197,21 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
       return Ok(GSexp::Leaf("".to_string()));
     }
 
+    let mut delimiters_by_opener_size: Vec<DelimiterType> =
+      delimiters.iter().cloned().collect();
+    delimiters_by_opener_size
+      .sort_by_cached_key(|delimiter| -(delimiter.opener().len() as i32));
+
+    let mut delimiters_by_closer_size: Vec<DelimiterType> =
+      delimiters.iter().cloned().collect();
+    delimiters_by_closer_size
+      .sort_by_cached_key(|delimiter| -(delimiter.closer().len() as i32));
+
+    let mut prefixes_by_size: Vec<PrefixType> =
+      prefixes.iter().cloned().collect();
+    prefixes_by_size
+      .sort_by_cached_key(|prefix| -(prefix.marker().len() as i32));
+
     let parser_state: &mut ParserState<DelimiterType, PrefixType> =
       &mut ParserState::new();
     let mut char_index: usize = 0;
@@ -210,16 +225,17 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
       let string_opener = char == '"';
 
       let matched_prefix = if consumed_index == char_index {
-        prefixes.iter().rev().find(|prefix| {
+        prefixes_by_size.iter().find(|prefix| {
           is_string_prefix(prefix.marker(), &chars[char_index..])
         })
       } else {
         None
       };
 
-      let matched_closing_delimiter = delimiters.iter().find(|delimiter| {
-        is_string_prefix(delimiter.closer(), &chars[char_index..])
-      });
+      let matched_closing_delimiter =
+        delimiters_by_closer_size.iter().find(|delimiter| {
+          is_string_prefix(delimiter.closer(), &chars[char_index..])
+        });
       let maybe_open_delimiter = parser_state.get_open_delimiter();
       let was_expected_closer_matched = match &maybe_open_delimiter {
         Some(open_delimiter) => {
@@ -245,10 +261,15 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
       }
 
       let matched_opening_delimiter =
-        delimiters.iter().rev().find(|delimiter| {
+        delimiters_by_opener_size.iter().find(|delimiter| {
           is_string_prefix(delimiter.opener(), &chars[char_index..])
         });
-      if !was_expected_closer_matched && matched_closing_delimiter.is_some() {}
+      if !was_expected_closer_matched && matched_closing_delimiter.is_some() {
+        return Err(ParseError::MismatchedCloser(
+          maybe_open_delimiter.unwrap().opener(),
+          matched_closing_delimiter.unwrap().closer(),
+        ));
+      }
       let whitespace = matched_prefix.is_none()
         && matched_opening_delimiter.is_none()
         && !was_expected_closer_matched
@@ -362,6 +383,62 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
   }
 }
 
+#[derive(Clone, Debug)]
+struct SimpleDelimiter {
+  opener: String,
+  closer: String,
+  tag: Option<String>,
+}
+impl Delimiter for SimpleDelimiter {
+  fn opener(&self) -> String {
+    self.opener.clone()
+  }
+
+  fn closer(&self) -> String {
+    self.closer.clone()
+  }
+
+  fn tag(&self) -> Option<String> {
+    self.tag.clone()
+  }
+}
+#[derive(Clone, Debug)]
+struct SimplePrefix {
+  marker: String,
+  tag: String,
+}
+impl Prefix for SimplePrefix {
+  fn marker(&self) -> String {
+    self.marker.clone()
+  }
+
+  fn tag(&self) -> String {
+    self.tag.clone()
+  }
+}
+fn generate_simple_delimiters_and_prefixes(
+  delimiter_strings: Vec<(&str, &str, Option<&str>)>,
+  prefix_strings: Vec<(&str, &str)>,
+) -> (Vec<SimpleDelimiter>, Vec<SimplePrefix>) {
+  (
+    delimiter_strings
+      .into_iter()
+      .map(|(opener, closer, tag)| SimpleDelimiter {
+        opener: opener.to_string(),
+        closer: closer.to_string(),
+        tag: tag.map(|s| s.to_string()),
+      })
+      .collect(),
+    prefix_strings
+      .into_iter()
+      .map(|(marker, tag)| SimplePrefix {
+        marker: marker.to_string(),
+        tag: tag.to_string(),
+      })
+      .collect(),
+  )
+}
+
 #[allow(dead_code, unused_macros)]
 mod tests {
   use super::*;
@@ -458,6 +535,17 @@ mod tests {
         "String {:?} was not parsed as expected.",
         $string
       );
+    };
+  }
+
+  macro_rules! assert_parameterized_parse_eq {
+    ($delimiters:expr, $prefixes:expr, $string:literal, $sexp:expr) => {
+      let (delimiters, prefixes) =
+        generate_simple_delimiters_and_prefixes($delimiters, $prefixes);
+      let gsexp: GSexp<SimpleDelimiter, SimplePrefix> =
+        GSexp::parse(&delimiters, &prefixes, $string)
+          .expect("Failed to parse string");
+      assert_eq!(gsexp.to_sexp(), $sexp);
     };
   }
 
@@ -647,6 +735,58 @@ mod tests {
     assert_parse_eq!(
       "(\"])]]]]}}(\")",
       Sexp::List(vec![Sexp::Leaf("\"])]]]]}}(\"".to_string()),])
+    );
+  }
+
+  #[test]
+  fn test_ambiguous_delimiters() {
+    assert_parameterized_parse_eq!(
+      vec![("(", ")", None), ("((", "))", Some("#double-parens"))],
+      vec![],
+      "(())",
+      Sexp::List(vec![Sexp::Leaf("#double-parens".to_string())])
+    );
+  }
+
+  #[test]
+  fn test_nested_ambiguous_delimiters() {
+    assert_parameterized_parse_eq!(
+      vec![("(", ")", None), ("((", "))", Some("#double-parens"))],
+      vec![],
+      "((()))",
+      Sexp::List(vec![
+        Sexp::Leaf("#double-parens".to_string()),
+        Sexp::List(vec![])
+      ])
+    );
+  }
+
+  #[test]
+  fn test_ambiguous_prefixes() {
+    assert_parameterized_parse_eq!(
+      vec![],
+      vec![("'", "#quote"), ("''", "#double-quote")],
+      "''a",
+      Sexp::List(vec![
+        Sexp::Leaf("#double-quote".to_string()),
+        Sexp::Leaf("a".to_string())
+      ])
+    );
+  }
+
+  #[test]
+  fn test_nested_ambiguous_prefixes() {
+    assert_parameterized_parse_eq!(
+      vec![],
+      vec![("'", "#quote"), ("''", "#double-quote")],
+      "'''a",
+      Sexp::List(vec![
+        Sexp::Leaf("#double-quote".to_string()),
+        Sexp::List(vec![
+          Sexp::Leaf("#quote".to_string()),
+          Sexp::Leaf("a".to_string())
+        ])
+      ])
     );
   }
 
