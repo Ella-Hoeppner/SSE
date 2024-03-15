@@ -40,8 +40,9 @@ impl fmt::Display for Sexp {
 }
 
 pub trait Syntax: Clone + Debug {
-  fn tag(&self) -> String;
-  fn allowed_tags(&self) -> Vec<String>;
+  type Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display;
+  fn tag(&self) -> Self::Tag;
+  fn allowed_tags(&self) -> Vec<Self::Tag>;
 }
 
 pub trait Delimiter: Syntax {
@@ -178,11 +179,12 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
   pub fn to_sexp(&self) -> Sexp {
     match self {
       GSexp::Leaf(token) => Sexp::Leaf(token.clone()),
-      GSexp::Prefixed(prefix, sub_expression) => {
-        Sexp::List(vec![Sexp::Leaf(prefix.tag()), sub_expression.to_sexp()])
-      }
+      GSexp::Prefixed(prefix, sub_expression) => Sexp::List(vec![
+        Sexp::Leaf(prefix.tag().to_string()),
+        sub_expression.to_sexp(),
+      ]),
       GSexp::Delimited(delimiter, sub_expressions) => {
-        let tag = delimiter.tag();
+        let tag = delimiter.tag().to_string();
         Sexp::List(if tag.is_empty() {
           sub_expressions.iter().map(|e| e.to_sexp()).collect()
         } else {
@@ -398,22 +400,29 @@ impl<DelimiterType: Delimiter, PrefixType: Prefix>
 }
 
 #[derive(Clone, Debug)]
-pub struct SimpleDelimiter {
+pub struct SimpleDelimiter<
+  Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display,
+> {
   opener: String,
   closer: String,
-  tag: String,
-  allowed_tags: Vec<String>,
+  tag: Tag,
+  allowed_tags: Vec<Tag>,
 }
-impl Syntax for SimpleDelimiter {
-  fn tag(&self) -> String {
+impl<Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display> Syntax
+  for SimpleDelimiter<Tag>
+{
+  type Tag = Tag;
+  fn tag(&self) -> Tag {
     self.tag.clone()
   }
 
-  fn allowed_tags(&self) -> Vec<String> {
+  fn allowed_tags(&self) -> Vec<Tag> {
     self.allowed_tags.clone()
   }
 }
-impl Delimiter for SimpleDelimiter {
+impl<Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display> Delimiter
+  for SimpleDelimiter<Tag>
+{
   fn opener(&self) -> String {
     self.opener.clone()
   }
@@ -423,74 +432,85 @@ impl Delimiter for SimpleDelimiter {
   }
 }
 #[derive(Clone, Debug)]
-pub struct SimplePrefix {
+pub struct SimplePrefix<
+  Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display,
+> {
   marker: String,
-  tag: String,
-  allowed_tags: Vec<String>,
+  tag: Tag,
+  allowed_tags: Vec<Tag>,
 }
-impl Syntax for SimplePrefix {
-  fn tag(&self) -> String {
+impl<Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display> Syntax
+  for SimplePrefix<Tag>
+{
+  type Tag = Tag;
+  fn tag(&self) -> Tag {
     self.tag.clone()
   }
 
-  fn allowed_tags(&self) -> Vec<String> {
+  fn allowed_tags(&self) -> Vec<Tag> {
     self.allowed_tags.clone()
   }
 }
-impl Prefix for SimplePrefix {
+impl<Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display> Prefix
+  for SimplePrefix<Tag>
+{
   fn marker(&self) -> String {
     self.marker.clone()
   }
 }
-pub fn generate_contextless_delimiters_and_prefixes(
-  delimiter_strings: Vec<(&str, &str, &str)>,
-  prefix_strings: Vec<(&str, &str)>,
-) -> (Vec<SimpleDelimiter>, Vec<SimplePrefix>) {
-  let all_tags: Vec<String> = delimiter_strings
+pub fn generate_contextless_delimiters_and_prefixes<
+  Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display,
+>(
+  delimiters: Vec<(&str, &str, Tag)>,
+  prefixes: Vec<(&str, Tag)>,
+) -> (Vec<SimpleDelimiter<Tag>>, Vec<SimplePrefix<Tag>>) {
+  let all_tags: Vec<Tag> = delimiters
     .iter()
-    .map(|(_, _, tag)| tag.to_string())
-    .chain(prefix_strings.iter().map(|(_, tag)| tag.to_string()))
+    .map(|(_, _, tag)| (*tag).clone())
+    .chain(prefixes.iter().map(|(_, tag)| (*tag).clone()))
     .collect();
   (
-    delimiter_strings
+    delimiters
       .into_iter()
       .map(|(opener, closer, tag)| SimpleDelimiter {
         opener: opener.to_string(),
         closer: closer.to_string(),
-        tag: tag.to_string(),
+        tag: tag.clone(),
         allowed_tags: all_tags.clone(),
       })
       .collect(),
-    prefix_strings
+    prefixes
       .into_iter()
       .map(|(marker, tag)| SimplePrefix {
         marker: marker.to_string(),
-        tag: tag.to_string(),
+        tag: tag.clone(),
         allowed_tags: all_tags.clone(),
       })
       .collect(),
   )
 }
-pub fn generate_contextful_delimiters_and_prefixes(
-  delimiter_strings: Vec<(&str, &str, &str, Vec<&str>)>,
-  prefix_strings: Vec<(&str, &str, Vec<&str>)>,
-) -> (Vec<SimpleDelimiter>, Vec<SimplePrefix>) {
+pub fn generate_contextful_delimiters_and_prefixes<
+  Tag: Clone + Debug + PartialEq + ToString + std::fmt::Display,
+>(
+  delimiters: Vec<(&str, &str, Tag, Vec<Tag>)>,
+  prefixes: Vec<(&str, Tag, Vec<Tag>)>,
+) -> (Vec<SimpleDelimiter<Tag>>, Vec<SimplePrefix<Tag>>) {
   (
-    delimiter_strings
+    delimiters
       .into_iter()
       .map(|(opener, closer, tag, allowed_tags)| SimpleDelimiter {
         opener: opener.to_string(),
         closer: closer.to_string(),
-        tag: tag.to_string(),
-        allowed_tags: allowed_tags.iter().map(|str| str.to_string()).collect(),
+        tag: tag.clone(),
+        allowed_tags: allowed_tags.clone(),
       })
       .collect(),
-    prefix_strings
+    prefixes
       .into_iter()
       .map(|(marker, tag, allowed_tags)| SimplePrefix {
         marker: marker.to_string(),
-        tag: tag.to_string(),
-        allowed_tags: allowed_tags.iter().map(|str| str.to_string()).collect(),
+        tag: tag.clone(),
+        allowed_tags: allowed_tags.clone(),
       })
       .collect(),
   )
@@ -511,6 +531,7 @@ mod tests {
   }
 
   impl Syntax for TestDelimiter {
+    type Tag = String;
     fn tag(&self) -> String {
       match self {
         TestDelimiter::Parentheses => "".to_string(),
@@ -576,6 +597,7 @@ mod tests {
   }
 
   impl Syntax for TestPrefix {
+    type Tag = String;
     fn tag(&self) -> String {
       match self {
         TestPrefix::Quote => "quote".to_string(),
@@ -629,7 +651,7 @@ mod tests {
     ($delimiters:expr, $prefixes:expr, $string:literal, $sexp:expr) => {
       let (delimiters, prefixes) =
         generate_contextless_delimiters_and_prefixes($delimiters, $prefixes);
-      let gsexp: GSexp<SimpleDelimiter, SimplePrefix> =
+      let gsexp: GSexp<SimpleDelimiter<String>, SimplePrefix<String>> =
         GSexp::parse(&delimiters, &prefixes, $string)
           .expect("Failed to parse string");
       assert_eq!(gsexp.to_sexp(), $sexp);
@@ -828,7 +850,10 @@ mod tests {
   #[test]
   fn test_ambiguous_delimiters() {
     assert_parameterized_parse_eq!(
-      vec![("(", ")", ""), ("((", "))", "#double-parens")],
+      vec![
+        ("(", ")", "".to_string()),
+        ("((", "))", "#double-parens".to_string()),
+      ],
       vec![],
       "(())",
       Sexp::List(vec![Sexp::Leaf("#double-parens".to_string())])
@@ -838,7 +863,10 @@ mod tests {
   #[test]
   fn test_nested_ambiguous_delimiters() {
     assert_parameterized_parse_eq!(
-      vec![("(", ")", ""), ("((", "))", "#double-parens")],
+      vec![
+        ("(", ")", "".to_string()),
+        ("((", "))", "#double-parens".to_string())
+      ],
       vec![],
       "((()))",
       Sexp::List(vec![
@@ -852,7 +880,10 @@ mod tests {
   fn test_ambiguous_prefixes() {
     assert_parameterized_parse_eq!(
       vec![],
-      vec![("'", "#quote"), ("''", "#double-quote")],
+      vec![
+        ("'", "#quote".to_string()),
+        ("''", "#double-quote".to_string())
+      ],
       "''a",
       Sexp::List(vec![
         Sexp::Leaf("#double-quote".to_string()),
@@ -865,7 +896,10 @@ mod tests {
   fn test_nested_ambiguous_prefixes() {
     assert_parameterized_parse_eq!(
       vec![],
-      vec![("'", "#quote"), ("''", "#double-quote")],
+      vec![
+        ("'", "#quote".to_string()),
+        ("''", "#double-quote".to_string())
+      ],
       "'''a",
       Sexp::List(vec![
         Sexp::Leaf("#double-quote".to_string()),
@@ -928,15 +962,27 @@ mod tests {
   }
 
   #[test]
-  fn test_contextful_delimiters() {
+  fn test_parse_contextful_delimiters_close() {
+    let (delimiters, prefixes) = generate_contextful_delimiters_and_prefixes(
+      vec![("(", ")", "".to_string(), vec![])],
+      vec![],
+    );
+    let gsexp: GSexp<SimpleDelimiter<String>, SimplePrefix<String>> =
+      GSexp::parse(&delimiters, &prefixes, "()")
+        .expect("Failed to parse string");
+    assert_eq!(gsexp.to_sexp(), Sexp::List(vec![]));
+  }
+
+  #[test]
+  fn test_parse_nested_contextful_delimiters() {
     let (delimiters, prefixes) = generate_contextful_delimiters_and_prefixes(
       vec![
-        ("(", ")", "", vec!["#brackets"]),
-        ("[", "]", "#brackets", vec![""]),
+        ("(", ")", "".to_string(), vec!["#brackets".to_string()]),
+        ("[", "]", "#brackets".to_string(), vec!["".to_string()]),
       ],
       vec![],
     );
-    let gsexp: GSexp<SimpleDelimiter, SimplePrefix> =
+    let gsexp: GSexp<SimpleDelimiter<String>, SimplePrefix<String>> =
       GSexp::parse(&delimiters, &prefixes, "([))())))))(])")
         .expect("Failed to parse string");
     assert_eq!(
