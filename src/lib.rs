@@ -1,6 +1,5 @@
 mod parse;
 mod sexp;
-pub mod str_tagged;
 mod str_utils;
 pub mod syntax;
 
@@ -8,7 +7,9 @@ pub use parse::Parser;
 
 #[cfg(test)]
 mod tests {
-  use crate::{sexp::Sexp::*, str_tagged::StringTaggedSyntaxGraph, Parser};
+  use crate::{
+    sexp::Sexp::*, syntax::str_tagged::StringTaggedSyntaxGraph, Parser,
+  };
 
   #[test]
   fn basic_sexp() {
@@ -20,6 +21,6 @@ mod tests {
         vec![("", "(", ")")],
         vec![],
       ));
-    assert_eq!(parser.parse(text), expected_sexp)
+    assert_eq!(parser.parse(text), Ok(expected_sexp))
   }
 }

@@ -29,7 +29,7 @@ impl<'s> Syntax<&'s str> for StringTaggedEncloser<'s> {
     self.tag
   }
 
-  fn allowed_child_tags(&self) -> &[&'s str] {
+  fn child_tags(&self) -> &[&'s str] {
     &self.child_tags
   }
 }
@@ -67,7 +67,7 @@ impl<'s> Syntax<&'s str> for StringTaggedSymmetricEncloser<'s> {
     self.tag
   }
 
-  fn allowed_child_tags(&self) -> &[&'s str] {
+  fn child_tags(&self) -> &[&'s str] {
     &self.child_tags
   }
 }
@@ -110,7 +110,7 @@ impl<'s> Syntax<&'s str> for StringTaggedOperator<'s> {
     self.tag
   }
 
-  fn allowed_child_tags(&self) -> &[&'s str] {
+  fn child_tags(&self) -> &[&'s str] {
     &self.child_tags
   }
 }

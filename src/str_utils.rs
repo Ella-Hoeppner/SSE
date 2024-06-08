@@ -1,3 +1,3 @@
-fn is_whitespace(c: char) -> bool {
+pub(crate) fn is_whitespace(c: char) -> bool {
   c == ' ' || c == ',' || c == '\t' || c == '\n'
 }

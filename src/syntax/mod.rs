@@ -1,5 +1,8 @@
+pub mod str_tagged;
+
 use std::{
   collections::HashMap,
+  convert::Infallible,
   fmt::{Debug, Display},
   hash::Hash,
   marker::PhantomData,
@@ -9,7 +12,7 @@ pub trait Syntax<Tag: Clone + Debug + PartialEq + Eq + Display + Hash>:
   Clone + Debug
 {
   fn tag(&self) -> Tag;
-  fn allowed_child_tags(&self) -> &[Tag];
+  fn child_tags(&self) -> &[Tag];
 }
 
 pub trait Encloser<Tag: Clone + Debug + PartialEq + Eq + Display + Hash>:
@@ -37,40 +40,40 @@ pub trait Operator<Tag: Clone + Debug + PartialEq + Eq + Display + Hash>:
 #[derive(Hash)]
 pub enum SyntaxElement<
   Tag: Clone + Debug + PartialEq + Eq + Display + Hash,
-  D: Encloser<Tag>,
-  SD: SymmetricEncloser<Tag>,
+  E: Encloser<Tag>,
+  SE: SymmetricEncloser<Tag>,
   O: Operator<Tag>,
 > {
-  Encloser(D),
-  SymmetricEncloser(SD),
+  Encloser(E),
+  SymmetricEncloser(SE),
   Operator(O),
-  _Unusable(PhantomData<Tag>),
+  _Unusable(PhantomData<Tag>, Infallible),
 }
 
 pub struct SyntaxGraph<
-  T: Clone + Debug + PartialEq + Eq + Display + Hash,
-  D: Encloser<T>,
-  SD: SymmetricEncloser<T>,
-  O: Operator<T>,
+  Tag: Clone + Debug + PartialEq + Eq + Display + Hash,
+  E: Encloser<Tag>,
+  SE: SymmetricEncloser<Tag>,
+  O: Operator<Tag>,
 > {
-  root: T,
-  syntax_elements: HashMap<T, SyntaxElement<T, D, SD, O>>,
+  pub(crate) root: Tag,
+  syntax_elements: HashMap<Tag, SyntaxElement<Tag, E, SE, O>>,
 }
 
 impl<
-    T: Clone + Debug + PartialEq + Eq + Display + Hash,
-    D: Encloser<T>,
-    SD: SymmetricEncloser<T>,
-    O: Operator<T>,
-  > SyntaxGraph<T, D, SD, O>
+    Tag: Clone + Debug + PartialEq + Eq + Display + Hash,
+    E: Encloser<Tag>,
+    SE: SymmetricEncloser<Tag>,
+    O: Operator<Tag>,
+  > SyntaxGraph<Tag, E, SE, O>
 {
-  pub fn new(root: T) -> Self {
+  pub fn new(root: Tag) -> Self {
     Self {
       root,
       syntax_elements: HashMap::new(),
     }
   }
-  pub fn with_encloser(mut self, tag: T, encloser: D) -> Self {
+  pub fn with_encloser(mut self, tag: Tag, encloser: E) -> Self {
     self
       .syntax_elements
       .insert(tag, SyntaxElement::Encloser(encloser));
@@ -78,18 +81,28 @@ impl<
   }
   pub fn with_symmetric_encloser(
     mut self,
-    tag: T,
-    symmetric_encloser: SD,
+    tag: Tag,
+    symmetric_encloser: SE,
   ) -> Self {
     self
       .syntax_elements
       .insert(tag, SyntaxElement::SymmetricEncloser(symmetric_encloser));
     self
   }
-  pub fn with_operator(mut self, tag: T, operator: O) -> Self {
+  pub fn with_operator(mut self, tag: Tag, operator: O) -> Self {
     self
       .syntax_elements
       .insert(tag, SyntaxElement::Operator(operator));
     self
+  }
+  pub fn get_child_tags(&self, tag: &Tag) -> &[Tag] {
+    match &self.syntax_elements[tag] {
+      SyntaxElement::Encloser(encloser) => encloser.child_tags(),
+      SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
+        symmetric_encloser.child_tags()
+      }
+      SyntaxElement::Operator(operator) => operator.child_tags(),
+      SyntaxElement::_Unusable(_, _) => unreachable!(),
+    }
   }
 }
