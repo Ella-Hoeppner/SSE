@@ -38,8 +38,8 @@ struct Parse<
   SE: SymmetricEncloser<'s, Tag>,
   O: Operator<'s, Tag>,
 > {
-  syntax_graph: &'s SyntaxGraph<'s, Tag, E, SE, O>,
   text: &'s str,
+  syntax_graph: &'s SyntaxGraph<'s, Tag, E, SE, O>,
   partial_sexps: Vec<TaggedSexpList<'s, Tag>>,
 }
 
@@ -56,8 +56,8 @@ impl<
     text: &'s str,
   ) -> Self {
     Self {
-      syntax_graph,
       text,
+      syntax_graph,
       partial_sexps: vec![],
     }
   }
@@ -117,7 +117,7 @@ impl<
       macro_rules! skip_n_chars {
         ($n:expr) => {
           if $n > 1 {
-            indexed_characters.nth($n - 1);
+            indexed_characters.nth($n - 2);
           }
         };
       }
