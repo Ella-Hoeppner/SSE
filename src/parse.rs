@@ -23,10 +23,12 @@ impl Display for ParseError {
   }
 }
 
+type TaggedSexpList<'s, Tag> = (Tag, Vec<TaggedSexp<'s, Tag>>);
+
 #[derive(Clone, Debug)]
 enum TaggedSexp<'s, Tag: SyntaxTag<'s>> {
   Leaf(&'s str),
-  List(Tag, Vec<TaggedSexp<'s, Tag>>),
+  List(TaggedSexpList<'s, Tag>),
 }
 
 struct Parse<
@@ -38,7 +40,7 @@ struct Parse<
 > {
   syntax_graph: &'s SyntaxGraph<'s, Tag, E, SE, O>,
   text: &'s str,
-  partial_sexps: Vec<(SyntaxScope<'s>, Tag, Vec<TaggedSexp<'s, Tag>>)>,
+  partial_sexps: Vec<TaggedSexpList<'s, Tag>>,
 }
 
 impl<
@@ -60,25 +62,25 @@ impl<
     }
   }
   fn close_sexp(&mut self) -> Option<TaggedSexp<'s, Tag>> {
-    let (_, tag, sub_sexps) = self
+    let (tag, sub_sexps) = self
       .partial_sexps
       .pop()
       .expect("called close_sexp with no open partial sexp");
-    let finished_sexp = TaggedSexp::List(tag, sub_sexps);
+    let finished_sexp = TaggedSexp::List((tag, sub_sexps));
     self.push_closed_sexp(finished_sexp)
   }
   fn push_closed_sexp(
     &mut self,
     sexp: TaggedSexp<'s, Tag>,
   ) -> Option<TaggedSexp<'s, Tag>> {
-    if let Some((scope, _tag, subsexps)) = self.partial_sexps.last_mut() {
+    if let Some((tag, subsexps)) = self.partial_sexps.last_mut() {
       subsexps.push(sexp);
       if let SyntaxScope::Operated {
         left_args,
         right_args,
-      } = scope
+      } = self.syntax_graph.get_tag_scope(tag)
       {
-        if subsexps.len() == *left_args + *right_args {
+        if subsexps.len() == left_args + right_args {
           self.close_sexp()
         } else {
           None
@@ -96,8 +98,9 @@ impl<
       indexed_characters.next()
     {
       if !is_whitespace(character) {
-        if let Some((SyntaxScope::Enclosed { awaited_closer }, _, _)) =
-          self.partial_sexps.last()
+        let open_sexp = self.partial_sexps.last();
+        if let Some(SyntaxScope::Enclosed { awaited_closer }) =
+          open_sexp.map(|(tag, _subsexps)| self.syntax_graph.get_tag_scope(tag))
         {
           if self.text[character_index..].starts_with(awaited_closer) {
             let closer_len = awaited_closer.len();
@@ -113,18 +116,14 @@ impl<
           self
             .partial_sexps
             .last()
-            .map(|(_, tag, _)| tag)
+            .map(|(tag, _)| tag)
             .unwrap_or(&self.syntax_graph.root),
         ) {
           if self.text[character_index..]
             .starts_with(self.syntax_graph.get_beginning_marker(tag))
           {
             //todo! handle operators consuming args to the left
-            self.partial_sexps.push((
-              self.syntax_graph.get_tag_scope(tag),
-              tag.clone(),
-              vec![],
-            ));
+            self.partial_sexps.push((tag.clone(), vec![]));
             continue 'outer;
           }
         }
@@ -186,7 +185,7 @@ impl<'s, Tag: SyntaxTag<'s>> Into<Sexp<'s>> for TaggedSexp<'s, Tag> {
   fn into(self) -> Sexp<'s> {
     match self {
       TaggedSexp::Leaf(leaf) => Sexp::Leaf(leaf),
-      TaggedSexp::List(tag, sub_sexps) => Sexp::List({
+      TaggedSexp::List((tag, sub_sexps)) => Sexp::List({
         let translated_sub_sexps =
           sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
         let tag_str = tag.tag_str();
