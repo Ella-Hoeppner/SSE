@@ -93,21 +93,48 @@ impl<
     }
   }
   fn complete(&mut self) -> Result<TaggedSexp<'s, Tag>, ParseError> {
-    let mut indexed_characters = self.text.char_indices().peekable();
+    let mut current_terminal_beginning: Option<usize> = None;
+    let mut indexed_characters = self
+      .text
+      .char_indices()
+      .chain(std::iter::once((self.text.len(), ' ')))
+      .peekable();
     'outer: while let Some((character_index, character)) =
       indexed_characters.next()
     {
-      if !is_whitespace(character) {
+      macro_rules! finish_terminal {
+        () => {
+          if let Some(terminal_beginning) = current_terminal_beginning {
+            if let Some(completed_sexp) = self.push_closed_sexp(
+              TaggedSexp::Leaf(&self.text[terminal_beginning..character_index]),
+            ) {
+              return Ok(completed_sexp);
+            }
+            current_terminal_beginning = None;
+          }
+        };
+      }
+      macro_rules! skip_n_chars {
+        ($n:expr) => {
+          if $n > 1 {
+            indexed_characters.nth($n - 1);
+          }
+        };
+      }
+      if is_whitespace(character) {
+        finish_terminal!();
+      } else {
         let open_sexp = self.partial_sexps.last();
         if let Some(SyntaxScope::Enclosed { awaited_closer }) =
           open_sexp.map(|(tag, _subsexps)| self.syntax_graph.get_tag_scope(tag))
         {
           if self.text[character_index..].starts_with(awaited_closer) {
+            finish_terminal!();
             let closer_len = awaited_closer.len();
             if let Some(completed_sexp) = self.close_sexp() {
               return Ok(completed_sexp);
             } else {
-              indexed_characters.nth(closer_len - 1);
+              skip_n_chars!(closer_len);
               continue;
             }
           }
@@ -119,33 +146,17 @@ impl<
             .map(|(tag, _)| tag)
             .unwrap_or(&self.syntax_graph.root),
         ) {
-          if self.text[character_index..]
-            .starts_with(self.syntax_graph.get_beginning_marker(tag))
-          {
+          let beginning_marker = self.syntax_graph.get_beginning_marker(tag);
+          if self.text[character_index..].starts_with(beginning_marker) {
+            finish_terminal!();
             //todo! handle operators consuming args to the left
             self.partial_sexps.push((tag.clone(), vec![]));
+            skip_n_chars!(beginning_marker.len());
             continue 'outer;
           }
         }
-        loop {
-          match indexed_characters.peek() {
-            Some((next_character_index, next_character)) => {
-              if is_whitespace(*next_character) {
-                self.push_closed_sexp(TaggedSexp::Leaf(
-                  &self.text[character_index..*next_character_index],
-                ));
-                break;
-              }
-            }
-            None => {
-              return if self.partial_sexps.is_empty() {
-                Ok(TaggedSexp::Leaf(&self.text[character_index..]))
-              } else {
-                Err(ParseError::EndOfText)
-              }
-            }
-          }
-          indexed_characters.next();
+        if current_terminal_beginning.is_none() {
+          current_terminal_beginning = Some(character_index)
         }
       }
     }

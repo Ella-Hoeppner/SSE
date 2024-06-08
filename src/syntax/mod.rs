@@ -1,10 +1,7 @@
 pub mod str_tagged;
 
 use std::{
-  collections::HashMap,
-  convert::Infallible,
-  fmt::{Debug, Display},
-  hash::Hash,
+  collections::HashMap, convert::Infallible, fmt::Debug, hash::Hash,
   marker::PhantomData,
 };
 
@@ -108,7 +105,7 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
-  pub fn get_beginning_marker(&self, tag: &Tag) -> &str {
+  pub(crate) fn get_beginning_marker(&self, tag: &Tag) -> &str {
     match &self.syntax_elements[tag] {
       SyntaxElement::Encloser(encloser) => encloser.opening_encloser_str(),
       SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
@@ -118,7 +115,7 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
-  pub fn get_tag_scope(&self, tag: &Tag) -> SyntaxScope {
+  pub(crate) fn get_tag_scope(&self, tag: &Tag) -> SyntaxScope {
     match &self.syntax_elements[tag] {
       SyntaxElement::Encloser(encloser) => SyntaxScope::Enclosed {
         awaited_closer: encloser.closing_encloser_str(),

@@ -1,6 +1,5 @@
-use crate::{
-  syntax::{Encloser, Operator, SymmetricEncloser, Syntax, SyntaxGraph},
-  Parser,
+use crate::syntax::{
+  Encloser, Operator, SymmetricEncloser, Syntax, SyntaxGraph,
 };
 
 use super::SyntaxTag;

@@ -36,7 +36,7 @@ mod tests {
 
   #[test]
   fn sexp_terminal() {
-    assert_sexp_parse("1", Leaf("1"));
+    assert_sexp_parse("hello!", Leaf("hello!"));
   }
 
   #[test]
