@@ -1,8 +1,6 @@
 use crate::syntax::{
-  Encloser, Operator, SymmetricEncloser, Syntax, SyntaxGraph,
+  Encloser, Operator, SymmetricEncloser, Syntax, SyntaxGraph, SyntaxTag,
 };
-
-use super::SyntaxTag;
 
 impl<'s> SyntaxTag<'s> for &'s str {
   fn tag_str(&self) -> &'s str {
@@ -144,7 +142,40 @@ pub type StringTaggedSyntaxGraph<'s> = SyntaxGraph<
 >;
 
 impl<'s> StringTaggedSyntaxGraph<'s> {
-  pub fn contextless_from_descriptions(
+  pub fn contextful(
+    root: &'s str,
+    enclosers: Vec<(&'s str, &'s str, &'s str, Vec<&'s str>)>,
+    operators: Vec<(&'s str, &'s str, usize, usize, Vec<&'s str>)>,
+  ) -> Self {
+    operators.into_iter().fold(
+      enclosers.into_iter().fold(
+        Self::new(root),
+        |graph, (tag, opener, closer, child_tags)| {
+          if opener == closer {
+            graph.with_symmetric_encloser(
+              tag,
+              StringTaggedSymmetricEncloser::new(tag, opener)
+                .with_child_tags(child_tags),
+            )
+          } else {
+            graph.with_encloser(
+              tag,
+              StringTaggedEncloser::new(tag, opener, closer)
+                .with_child_tags(child_tags),
+            )
+          }
+        },
+      ),
+      |graph, (tag, operator, left_args, right_args, child_tags)| {
+        graph.with_operator(
+          tag,
+          StringTaggedOperator::new(tag, operator, left_args, right_args)
+            .with_child_tags(child_tags),
+        )
+      },
+    )
+  }
+  pub fn contextless(
     root: &'s str,
     enclosers: Vec<(&'s str, &'s str, &'s str)>,
     operators: Vec<(&'s str, &'s str, usize, usize)>,
@@ -154,32 +185,18 @@ impl<'s> StringTaggedSyntaxGraph<'s> {
       .map(|(tag, _, _)| *tag)
       .chain(operators.iter().map(|(tag, _, _, _)| *tag))
       .collect();
-    operators.into_iter().fold(
-      enclosers.into_iter().fold(
-        Self::new(root),
-        |graph, (tag, opener, closer)| {
-          if opener == closer {
-            graph.with_symmetric_encloser(
-              tag,
-              StringTaggedSymmetricEncloser::new(tag, opener)
-                .with_child_tags(tags.clone()),
-            )
-          } else {
-            graph.with_encloser(
-              tag,
-              StringTaggedEncloser::new(tag, opener, closer)
-                .with_child_tags(tags.clone()),
-            )
-          }
-        },
-      ),
-      |graph, (tag, operator, left_args, right_args)| {
-        graph.with_operator(
-          tag,
-          StringTaggedOperator::new(tag, operator, left_args, right_args)
-            .with_child_tags(tags.clone()),
-        )
-      },
+    Self::contextful(
+      root,
+      enclosers
+        .into_iter()
+        .map(|(tag, opener, closer)| (tag, opener, closer, tags.clone()))
+        .collect(),
+      operators
+        .into_iter()
+        .map(|(tag, marker, left_args, right_args)| {
+          (tag, marker, left_args, right_args, tags.clone())
+        })
+        .collect(),
     )
   }
 }

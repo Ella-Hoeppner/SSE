@@ -1,82 +1,53 @@
 mod parse;
 mod sexp;
+pub mod str_tagged;
 mod str_utils;
 pub mod syntax;
-
-pub use parse::Parser;
 
 #[cfg(test)]
 mod tests {
   use crate::{
-    sexp::Sexp::{self, *},
-    syntax::str_tagged::{
+    parse::ParseError,
+    sexp::Sexp::*,
+    str_tagged::{
       StringTaggedEncloser, StringTaggedOperator,
       StringTaggedSymmetricEncloser, StringTaggedSyntaxGraph,
     },
-    Parser,
+    syntax::SyntaxGraph,
   };
 
-  fn sexp_parser<'s>() -> Parser<
+  fn sexp_graph<'s>() -> SyntaxGraph<
     's,
     &'s str,
     StringTaggedEncloser<'s>,
     StringTaggedSymmetricEncloser<'s>,
     StringTaggedOperator<'s>,
   > {
-    Parser::new(StringTaggedSyntaxGraph::contextless_from_descriptions(
+    StringTaggedSyntaxGraph::contextless("", vec![("", "(", ")")], vec![])
+  }
+
+  fn quote_sexp_graph<'s>() -> SyntaxGraph<
+    's,
+    &'s str,
+    StringTaggedEncloser<'s>,
+    StringTaggedSymmetricEncloser<'s>,
+    StringTaggedOperator<'s>,
+  > {
+    StringTaggedSyntaxGraph::contextless(
       "",
       vec![("", "(", ")")],
-      vec![],
-    ))
+      vec![("QUOTE", "'", 0, 1)],
+    )
   }
 
-  fn assert_sexp_parse_eq(text: &str, sexp: Sexp) {
-    assert_eq!(sexp_parser().parse(text), Ok(sexp))
-  }
-
-  #[test]
-  fn sexp_terminal() {
-    assert_sexp_parse_eq("hello!", Leaf("hello!"));
-  }
-
-  #[test]
-  fn sexp_list() {
-    assert_sexp_parse_eq(
-      "( + 1 2 )",
-      List(vec![Leaf("+"), Leaf("1"), Leaf("2")]),
-    );
-  }
-
-  #[test]
-  fn non_whitespaced_list() {
-    assert_sexp_parse_eq("(1)", List(vec![Leaf("1")]));
-  }
-
-  #[test]
-  fn sexp_terminal_non_whitespaced_into_opener() {
-    assert_sexp_parse_eq("(hello?())", List(vec![Leaf("hello?"), List(vec![])]))
-  }
-
-  #[test]
-  fn sexp_nested_list() {
-    assert_sexp_parse_eq(
-      "(+ 1 (* 2 3))",
-      List(vec![
-        Leaf("+"),
-        Leaf("1"),
-        List(vec![Leaf("*"), Leaf("2"), Leaf("3")]),
-      ]),
-    );
-  }
-
-  fn bracket_parser<'s>() -> Parser<
+  fn multi_bracket_graph<'s>() -> SyntaxGraph<
     's,
     &'s str,
     StringTaggedEncloser<'s>,
     StringTaggedSymmetricEncloser<'s>,
     StringTaggedOperator<'s>,
   > {
-    Parser::new(StringTaggedSyntaxGraph::contextless_from_descriptions(
+    StringTaggedSyntaxGraph::contextless(
       "",
       vec![
         ("", "(", ")"),
@@ -85,47 +56,182 @@ mod tests {
         (":HASH_CURLY", "#{", "}"),
       ],
       vec![],
-    ))
-  }
-
-  fn assert_bracket_parse_eq(text: &str, sexp: Sexp) {
-    assert_eq!(bracket_parser().parse(text), Ok(sexp))
-  }
-
-  #[test]
-  fn square_bracket() {
-    assert_bracket_parse_eq(
-      "[1 2]",
-      List(vec![Leaf(":SQUARE"), Leaf("1"), Leaf("2")]),
     )
   }
 
   #[test]
+  fn sexp_terminal() {
+    assert_eq!(sexp_graph().parse_to_sexp("hello!"), Ok(Leaf("hello!")));
+  }
+
+  #[test]
+  fn sexp_whitespaced_list() {
+    assert_eq!(
+      sexp_graph().parse_to_sexp("( + 1 2 )"),
+      Ok(List(vec![Leaf("+"), Leaf("1"), Leaf("2")]))
+    );
+  }
+
+  #[test]
+  fn sexp_list() {
+    assert_eq!(sexp_graph().parse_to_sexp("(1)"), Ok(List(vec![Leaf("1")])));
+  }
+
+  #[test]
+  fn sexp_terminal_non_whitespaced_into_opener() {
+    assert_eq!(
+      sexp_graph().parse_to_sexp("(hello?())"),
+      Ok(List(vec![Leaf("hello?"), List(vec![])]))
+    );
+  }
+
+  #[test]
+  fn sexp_nested_list() {
+    assert_eq!(
+      sexp_graph().parse_to_sexp("(+ 1 (* 2 3))"),
+      Ok(List(vec![
+        Leaf("+"),
+        Leaf("1"),
+        List(vec![Leaf("*"), Leaf("2"), Leaf("3")]),
+      ]))
+    );
+  }
+
+  #[test]
+  fn unclosed_list_causes_error() {
+    assert_eq!(
+      sexp_graph().parse_to_sexp("(+ 1 2"),
+      Err(ParseError::EndOfText)
+    );
+  }
+
+  #[test]
+  fn square_bracket() {
+    assert_eq!(
+      multi_bracket_graph().parse_to_sexp("[1 2]"),
+      Ok(List(vec![Leaf(":SQUARE"), Leaf("1"), Leaf("2")]))
+    );
+  }
+
+  #[test]
   fn nested_brackets() {
-    assert_bracket_parse_eq(
-      "([{#{hello!}}])",
-      List(vec![List(vec![
+    assert_eq!(
+      multi_bracket_graph().parse_to_sexp("([{#{hello!}}])"),
+      Ok(List(vec![List(vec![
         Leaf(":SQUARE"),
         List(vec![
           Leaf(":CURLY"),
           List(vec![Leaf(":HASH_CURLY"), Leaf("hello!")]),
         ]),
-      ])]),
-    )
+      ])]))
+    );
   }
 
   #[test]
   fn nested_brackets_extra_hash() {
-    assert_bracket_parse_eq(
-      "([{####{hello!}}])",
-      List(vec![List(vec![
+    assert_eq!(
+      multi_bracket_graph().parse_to_sexp("([{####{hello!}}])"),
+      Ok(List(vec![List(vec![
         Leaf(":SQUARE"),
         List(vec![
           Leaf(":CURLY"),
           Leaf("###"),
           List(vec![Leaf(":HASH_CURLY"), Leaf("hello!")]),
         ]),
-      ])]),
-    )
+      ])]))
+    );
+  }
+
+  #[test]
+  fn mismatched_brackets_cause_error() {
+    assert_eq!(
+      multi_bracket_graph().parse_to_sexp("([)]"),
+      Err(ParseError::UnexpectedCloser("]"))
+    );
+  }
+
+  #[test]
+  fn prefix_op() {
+    assert_eq!(
+      quote_sexp_graph().parse_to_sexp("'hello!"),
+      Ok(List(vec![Leaf("QUOTE"), Leaf("hello!")]))
+    );
+  }
+
+  #[test]
+  fn prefix_op_in_list() {
+    assert_eq!(
+      quote_sexp_graph().parse_to_sexp("('hello! goodbye!)"),
+      Ok(List(vec![
+        List(vec![Leaf("QUOTE"), Leaf("hello!")]),
+        Leaf("goodbye!")
+      ]))
+    );
+  }
+
+  #[test]
+  fn infix_op() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextless(
+        "",
+        vec![("", "(", ")")],
+        vec![("PLUS", "+", 1, 1)],
+      )
+      .parse_to_sexp("1+2"),
+      Ok(List(vec![Leaf("PLUS"), Leaf("1"), Leaf("2")]))
+    );
+  }
+
+  #[test]
+  fn unfinished_infix_op_causes_error() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextless(
+        "",
+        vec![("", "(", ")")],
+        vec![("PLUS", "+", 1, 1)],
+      )
+      .parse_to_sexp("(1+)"),
+      Err(ParseError::UnexpectedCloser(")"))
+    );
+  }
+
+  #[test]
+  fn contextful_brackets() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextful(
+        "",
+        vec![
+          ("", "(", ")", vec!["", "SQUARE"]),
+          ("SQUARE", "[", "]", vec!["", "SQUARE", "ANGLE"]),
+          ("ANGLE", "<", ">", vec!["", "SQUARE", "ANGLE"])
+        ],
+        vec![]
+      )
+      .parse_to_sexp("(< [<>])"),
+      Ok(List(vec![
+        Leaf("<"),
+        List(vec![Leaf("SQUARE"), List(vec![Leaf("ANGLE")])]),
+      ]))
+    );
+  }
+
+  #[test]
+  fn contextful_operator() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextful(
+        "",
+        vec![
+          ("", "(", ")", vec!["", "COLON"]),
+          ("ANGLE", "<", ">", vec!["", "ANGLE", "COLON"])
+        ],
+        vec![("COLON", ":", 1, 1, vec!["", "ANGLE", "COLON"])],
+      )
+      .parse_to_sexp("(> 1 0) : <Bool>"),
+      Ok(List(vec![
+        Leaf("COLON"),
+        List(vec![Leaf(">"), Leaf("1"), Leaf("0")]),
+        List(vec![Leaf("ANGLE"), Leaf("Bool")])
+      ]))
+    );
   }
 }

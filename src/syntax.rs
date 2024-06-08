@@ -1,8 +1,11 @@
-pub mod str_tagged;
-
 use std::{
   collections::HashMap, convert::Infallible, fmt::Debug, hash::Hash,
   marker::PhantomData,
+};
+
+use crate::{
+  parse::{Parse, ParseError},
+  sexp::{Sexp, TaggedSexp},
 };
 
 pub trait SyntaxTag<'s>: Clone + Debug + PartialEq + Eq + Hash {
@@ -131,5 +134,17 @@ impl<
       },
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
+  }
+  pub fn parse(
+    &'s self,
+    text: &'s str,
+  ) -> Result<TaggedSexp<'s, Tag>, ParseError<'s>> {
+    Parse::new(&self, text).complete()
+  }
+  pub fn parse_to_sexp(
+    &'s self,
+    text: &'s str,
+  ) -> Result<Sexp<'s>, ParseError<'s>> {
+    self.parse(text).map(|tagged_sexp| tagged_sexp.into())
   }
 }

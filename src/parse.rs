@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
 
 use crate::{
-  sexp::Sexp,
+  sexp::{TaggedSexp, TaggedSexpList},
   str_utils::is_whitespace,
   syntax::{
     Encloser, Operator, SymmetricEncloser, SyntaxGraph, SyntaxScope, SyntaxTag,
@@ -9,29 +9,24 @@ use crate::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ParseError {
+pub enum ParseError<'s> {
   EndOfText,
+  UnexpectedCloser(&'s str),
 }
 
-impl Display for ParseError {
+impl<'s> Display for ParseError<'s> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    use ParseError::*;
     match self {
-      ParseError::EndOfText => {
-        write!(f, "encountered end of text while reading")
+      EndOfText => write!(f, "end of text while parsing"),
+      UnexpectedCloser(closer) => {
+        write!(f, "unexpected closer {} while parsing", closer)
       }
     }
   }
 }
 
-type TaggedSexpList<'s, Tag> = (Tag, Vec<TaggedSexp<'s, Tag>>);
-
-#[derive(Clone, Debug)]
-enum TaggedSexp<'s, Tag: SyntaxTag<'s>> {
-  Leaf(&'s str),
-  List(TaggedSexpList<'s, Tag>),
-}
-
-struct Parse<
+pub(crate) struct Parse<
   's,
   Tag: SyntaxTag<'s>,
   E: Encloser<'s, Tag>,
@@ -51,7 +46,7 @@ impl<
     O: Operator<'s, Tag>,
   > Parse<'s, Tag, E, SE, O>
 {
-  fn new(
+  pub(crate) fn new(
     syntax_graph: &'s SyntaxGraph<'s, Tag, E, SE, O>,
     text: &'s str,
   ) -> Self {
@@ -92,7 +87,9 @@ impl<
       Some(sexp)
     }
   }
-  fn complete(&mut self) -> Result<TaggedSexp<'s, Tag>, ParseError> {
+  pub(crate) fn complete(
+    &mut self,
+  ) -> Result<TaggedSexp<'s, Tag>, ParseError<'s>> {
     let mut current_terminal_beginning: Option<usize> = None;
     let mut indexed_characters = self
       .text
@@ -161,53 +158,5 @@ impl<
       }
     }
     Err(ParseError::EndOfText)
-  }
-}
-
-pub struct Parser<
-  's,
-  Tag: SyntaxTag<'s>,
-  E: Encloser<'s, Tag>,
-  SE: SymmetricEncloser<'s, Tag>,
-  O: Operator<'s, Tag>,
-> {
-  syntax_graph: SyntaxGraph<'s, Tag, E, SE, O>,
-}
-
-impl<
-    's,
-    Tag: SyntaxTag<'s>,
-    E: Encloser<'s, Tag>,
-    SE: SymmetricEncloser<'s, Tag>,
-    O: Operator<'s, Tag>,
-  > Parser<'s, Tag, E, SE, O>
-{
-  pub fn new(syntax_graph: SyntaxGraph<'s, Tag, E, SE, O>) -> Self {
-    Self { syntax_graph }
-  }
-  pub fn parse(&'s self, text: &'s str) -> Result<Sexp<'s>, ParseError> {
-    Parse::new(&self.syntax_graph, text)
-      .complete()
-      .map(|tagged_sexp| tagged_sexp.into())
-  }
-}
-
-impl<'s, Tag: SyntaxTag<'s>> Into<Sexp<'s>> for TaggedSexp<'s, Tag> {
-  fn into(self) -> Sexp<'s> {
-    match self {
-      TaggedSexp::Leaf(leaf) => Sexp::Leaf(leaf),
-      TaggedSexp::List((tag, sub_sexps)) => Sexp::List({
-        let translated_sub_sexps =
-          sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
-        let tag_str = tag.tag_str();
-        if tag_str.is_empty() {
-          translated_sub_sexps.collect()
-        } else {
-          std::iter::once(Sexp::Leaf(&tag_str))
-            .chain(translated_sub_sexps)
-            .collect()
-        }
-      }),
-    }
   }
 }
