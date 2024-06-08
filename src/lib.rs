@@ -41,6 +41,11 @@ mod tests {
 
   #[test]
   fn sexp_list() {
-    assert_sexp_parse("(+ 1 2)", List(vec![Leaf("+"), Leaf("1"), Leaf("2")]));
+    assert_sexp_parse("( + 1 2 )", List(vec![Leaf("+"), Leaf("1"), Leaf("2")]));
+  }
+
+  #[test]
+  fn non_whitespaced_list() {
+    assert_sexp_parse("(1)", List(vec![Leaf("1")]));
   }
 }

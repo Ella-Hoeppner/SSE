@@ -3,7 +3,9 @@ use std::fmt::{Debug, Display};
 use crate::{
   sexp::Sexp,
   str_utils::is_whitespace,
-  syntax::{Encloser, Operator, SymmetricEncloser, SyntaxGraph, SyntaxTag},
+  syntax::{
+    Encloser, Operator, SymmetricEncloser, SyntaxGraph, SyntaxScope, SyntaxTag,
+  },
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -21,11 +23,6 @@ impl Display for ParseError {
   }
 }
 
-enum Scope<'s> {
-  Enclosed { awaited_closer: &'s str },
-  Operated { remaining_args: usize },
-}
-
 #[derive(Clone, Debug)]
 enum TaggedSexp<'s, Tag: SyntaxTag<'s>> {
   Leaf(&'s str),
@@ -41,7 +38,7 @@ struct Parse<
 > {
   syntax_graph: &'s SyntaxGraph<'s, Tag, E, SE, O>,
   text: &'s str,
-  partial_sexps: Vec<(Scope<'s>, Tag, Vec<TaggedSexp<'s, Tag>>)>,
+  partial_sexps: Vec<(SyntaxScope<'s>, Tag, Vec<TaggedSexp<'s, Tag>>)>,
 }
 
 impl<
@@ -68,18 +65,20 @@ impl<
       .pop()
       .expect("called close_sexp with no open partial sexp");
     let finished_sexp = TaggedSexp::List(tag, sub_sexps);
-    self.push_sexp(finished_sexp)
+    self.push_closed_sexp(finished_sexp)
   }
-  fn push_sexp(
+  fn push_closed_sexp(
     &mut self,
     sexp: TaggedSexp<'s, Tag>,
   ) -> Option<TaggedSexp<'s, Tag>> {
-    if let Some((scope, tag, last_partial_sexp)) = self.partial_sexps.last_mut()
-    {
-      last_partial_sexp.push(sexp);
-      if let Scope::Operated { remaining_args } = scope {
-        *remaining_args -= 1;
-        if *remaining_args == 0 {
+    if let Some((scope, _tag, subsexps)) = self.partial_sexps.last_mut() {
+      subsexps.push(sexp);
+      if let SyntaxScope::Operated {
+        left_args,
+        right_args,
+      } = scope
+      {
+        if subsexps.len() == *left_args + *right_args {
           self.close_sexp()
         } else {
           None
@@ -93,9 +92,11 @@ impl<
   }
   fn complete(&mut self) -> Result<TaggedSexp<'s, Tag>, ParseError> {
     let mut indexed_characters = self.text.char_indices().peekable();
-    while let Some((character_index, character)) = indexed_characters.next() {
+    'outer: while let Some((character_index, character)) =
+      indexed_characters.next()
+    {
       if !is_whitespace(character) {
-        if let Some((Scope::Enclosed { awaited_closer }, _, _)) =
+        if let Some((SyntaxScope::Enclosed { awaited_closer }, _, _)) =
           self.partial_sexps.last()
         {
           if self.text[character_index..].starts_with(awaited_closer) {
@@ -118,20 +119,20 @@ impl<
           if self.text[character_index..]
             .starts_with(self.syntax_graph.get_beginning_marker(tag))
           {
-            if let Some((left_args, right_args)) =
-              self.syntax_graph.get_tag_operator_args(tag)
-            {
-              todo!()
-            } else {
-              todo!()
-            }
+            //todo! handle operators consuming args to the left
+            self.partial_sexps.push((
+              self.syntax_graph.get_tag_scope(tag),
+              tag.clone(),
+              vec![],
+            ));
+            continue 'outer;
           }
         }
         loop {
           match indexed_characters.peek() {
             Some((next_character_index, next_character)) => {
               if is_whitespace(*next_character) {
-                self.push_sexp(TaggedSexp::Leaf(
+                self.push_closed_sexp(TaggedSexp::Leaf(
                   &self.text[character_index..*next_character_index],
                 ));
                 break;

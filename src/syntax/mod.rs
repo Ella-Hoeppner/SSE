@@ -46,6 +46,11 @@ pub enum SyntaxElement<
   _Unusable(PhantomData<&'s Tag>, Infallible),
 }
 
+pub(crate) enum SyntaxScope<'s> {
+  Enclosed { awaited_closer: &'s str },
+  Operated { left_args: usize, right_args: usize },
+}
+
 pub struct SyntaxGraph<
   's,
   Tag: SyntaxTag<'s>,
@@ -113,13 +118,20 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
-  pub fn get_tag_operator_args(&self, tag: &Tag) -> Option<(usize, usize)> {
+  pub fn get_tag_scope(&self, tag: &Tag) -> SyntaxScope {
     match &self.syntax_elements[tag] {
-      SyntaxElement::Encloser(_) => None,
-      SyntaxElement::SymmetricEncloser(_) => None,
-      SyntaxElement::Operator(operator) => {
-        Some((operator.left_args(), operator.right_args()))
+      SyntaxElement::Encloser(encloser) => SyntaxScope::Enclosed {
+        awaited_closer: encloser.closing_encloser_str(),
+      },
+      SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
+        SyntaxScope::Enclosed {
+          awaited_closer: symmetric_encloser.encloser_str(),
+        }
       }
+      SyntaxElement::Operator(operator) => SyntaxScope::Operated {
+        left_args: operator.left_args(),
+        right_args: operator.right_args(),
+      },
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
