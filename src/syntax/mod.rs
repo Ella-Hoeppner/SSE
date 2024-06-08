@@ -8,30 +8,25 @@ use std::{
   marker::PhantomData,
 };
 
-pub trait Syntax<Tag: Clone + Debug + PartialEq + Eq + Display + Hash>:
-  Clone + Debug
-{
+pub trait SyntaxTag<'s>: Clone + Debug + PartialEq + Eq + Hash {
+  fn tag_str(&self) -> &'s str;
+}
+
+pub trait Syntax<'s, Tag: SyntaxTag<'s>>: Clone + Debug {
   fn tag(&self) -> Tag;
   fn child_tags(&self) -> &[Tag];
 }
 
-pub trait Encloser<Tag: Clone + Debug + PartialEq + Eq + Display + Hash>:
-  Syntax<Tag>
-{
+pub trait Encloser<'s, Tag: SyntaxTag<'s>>: Syntax<'s, Tag> {
   fn opening_encloser_str(&self) -> &str;
   fn closing_encloser_str(&self) -> &str;
 }
 
-pub trait SymmetricEncloser<
-  Tag: Clone + Debug + PartialEq + Eq + Display + Hash,
->: Syntax<Tag>
-{
+pub trait SymmetricEncloser<'s, Tag: SyntaxTag<'s>>: Syntax<'s, Tag> {
   fn encloser_str(&self) -> &str;
 }
 
-pub trait Operator<Tag: Clone + Debug + PartialEq + Eq + Display + Hash>:
-  Syntax<Tag>
-{
+pub trait Operator<'s, Tag: SyntaxTag<'s>>: Syntax<'s, Tag> {
   fn left_args(&self) -> usize;
   fn right_args(&self) -> usize;
   fn op_str(&self) -> &str;
@@ -39,33 +34,36 @@ pub trait Operator<Tag: Clone + Debug + PartialEq + Eq + Display + Hash>:
 
 #[derive(Hash)]
 pub enum SyntaxElement<
-  Tag: Clone + Debug + PartialEq + Eq + Display + Hash,
-  E: Encloser<Tag>,
-  SE: SymmetricEncloser<Tag>,
-  O: Operator<Tag>,
+  's,
+  Tag: SyntaxTag<'s>,
+  E: Encloser<'s, Tag>,
+  SE: SymmetricEncloser<'s, Tag>,
+  O: Operator<'s, Tag>,
 > {
   Encloser(E),
   SymmetricEncloser(SE),
   Operator(O),
-  _Unusable(PhantomData<Tag>, Infallible),
+  _Unusable(PhantomData<&'s Tag>, Infallible),
 }
 
 pub struct SyntaxGraph<
-  Tag: Clone + Debug + PartialEq + Eq + Display + Hash,
-  E: Encloser<Tag>,
-  SE: SymmetricEncloser<Tag>,
-  O: Operator<Tag>,
+  's,
+  Tag: SyntaxTag<'s>,
+  E: Encloser<'s, Tag>,
+  SE: SymmetricEncloser<'s, Tag>,
+  O: Operator<'s, Tag>,
 > {
   pub(crate) root: Tag,
-  syntax_elements: HashMap<Tag, SyntaxElement<Tag, E, SE, O>>,
+  syntax_elements: HashMap<Tag, SyntaxElement<'s, Tag, E, SE, O>>,
 }
 
 impl<
-    Tag: Clone + Debug + PartialEq + Eq + Display + Hash,
-    E: Encloser<Tag>,
-    SE: SymmetricEncloser<Tag>,
-    O: Operator<Tag>,
-  > SyntaxGraph<Tag, E, SE, O>
+    's,
+    Tag: SyntaxTag<'s>,
+    E: Encloser<'s, Tag>,
+    SE: SymmetricEncloser<'s, Tag>,
+    O: Operator<'s, Tag>,
+  > SyntaxGraph<'s, Tag, E, SE, O>
 {
   pub fn new(root: Tag) -> Self {
     Self {
@@ -112,6 +110,16 @@ impl<
         symmetric_encloser.encloser_str()
       }
       SyntaxElement::Operator(operator) => operator.op_str(),
+      SyntaxElement::_Unusable(_, _) => unreachable!(),
+    }
+  }
+  pub fn get_tag_operator_args(&self, tag: &Tag) -> Option<(usize, usize)> {
+    match &self.syntax_elements[tag] {
+      SyntaxElement::Encloser(_) => None,
+      SyntaxElement::SymmetricEncloser(_) => None,
+      SyntaxElement::Operator(operator) => {
+        Some((operator.left_args(), operator.right_args()))
+      }
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }

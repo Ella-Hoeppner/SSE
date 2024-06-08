@@ -17,6 +17,7 @@ mod tests {
   };
 
   fn sexp_parser<'s>() -> Parser<
+    's,
     &'s str,
     StringTaggedEncloser<'s>,
     StringTaggedSymmetricEncloser<'s>,

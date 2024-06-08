@@ -3,6 +3,14 @@ use crate::{
   Parser,
 };
 
+use super::SyntaxTag;
+
+impl<'s> SyntaxTag<'s> for &'s str {
+  fn tag_str(&self) -> &'s str {
+    self
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct StringTaggedEncloser<'s> {
   tag: &'s str,
@@ -24,7 +32,7 @@ impl<'s> StringTaggedEncloser<'s> {
     self
   }
 }
-impl<'s> Syntax<&'s str> for StringTaggedEncloser<'s> {
+impl<'s> Syntax<'s, &'s str> for StringTaggedEncloser<'s> {
   fn tag(&self) -> &'s str {
     self.tag
   }
@@ -33,7 +41,7 @@ impl<'s> Syntax<&'s str> for StringTaggedEncloser<'s> {
     &self.child_tags
   }
 }
-impl<'s> Encloser<&'s str> for StringTaggedEncloser<'s> {
+impl<'s> Encloser<'s, &'s str> for StringTaggedEncloser<'s> {
   fn opening_encloser_str(&self) -> &str {
     self.opener
   }
@@ -62,7 +70,7 @@ impl<'s> StringTaggedSymmetricEncloser<'s> {
     self
   }
 }
-impl<'s> Syntax<&'s str> for StringTaggedSymmetricEncloser<'s> {
+impl<'s> Syntax<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
   fn tag(&self) -> &'s str {
     self.tag
   }
@@ -71,7 +79,7 @@ impl<'s> Syntax<&'s str> for StringTaggedSymmetricEncloser<'s> {
     &self.child_tags
   }
 }
-impl<'s> SymmetricEncloser<&'s str> for StringTaggedSymmetricEncloser<'s> {
+impl<'s> SymmetricEncloser<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
   fn encloser_str(&self) -> &str {
     self.encloser
   }
@@ -105,7 +113,7 @@ impl<'s> StringTaggedOperator<'s> {
     self
   }
 }
-impl<'s> Syntax<&'s str> for StringTaggedOperator<'s> {
+impl<'s> Syntax<'s, &'s str> for StringTaggedOperator<'s> {
   fn tag(&self) -> &'s str {
     self.tag
   }
@@ -114,7 +122,7 @@ impl<'s> Syntax<&'s str> for StringTaggedOperator<'s> {
     &self.child_tags
   }
 }
-impl<'s> Operator<&'s str> for StringTaggedOperator<'s> {
+impl<'s> Operator<'s, &'s str> for StringTaggedOperator<'s> {
   fn op_str(&self) -> &str {
     self.operator
   }
@@ -129,6 +137,7 @@ impl<'s> Operator<&'s str> for StringTaggedOperator<'s> {
 }
 
 pub type StringTaggedSyntaxGraph<'s> = SyntaxGraph<
+  's,
   &'s str,
   StringTaggedEncloser<'s>,
   StringTaggedSymmetricEncloser<'s>,
