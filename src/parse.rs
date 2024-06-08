@@ -32,9 +32,7 @@ struct Parse<
 > {
   syntax_graph: &'s SyntaxGraph<Tag, E, SE, O>,
   current_tag: &'s Tag,
-  active_tags: &'s [Tag],
   text: &'s str,
-  text_index: usize,
   partial_sexps: Vec<(Scope<'s>, Vec<Sexp<'s>>)>,
 }
 
@@ -51,9 +49,7 @@ impl<
     Self {
       syntax_graph,
       current_tag: initial_tag,
-      active_tags: syntax_graph.get_child_tags(initial_tag),
       text,
-      text_index: 0,
       partial_sexps: vec![],
     }
   }
@@ -85,10 +81,8 @@ impl<
     }
   }
   fn complete(&mut self) -> Result<Sexp<'s>, ParseError> {
-    let mut indexed_characters = self.text.char_indices();
-    loop {
-      let (character_index, character) =
-        indexed_characters.next().ok_or(ParseError::EndOfText)?;
+    let mut indexed_characters = self.text.char_indices().peekable();
+    while let Some((character_index, character)) = indexed_characters.next() {
       if !is_whitespace(character) {
         if let Some((Scope::Enclosed { awaited_closer }, _)) =
           self.partial_sexps.last()
@@ -103,9 +97,36 @@ impl<
             }
           }
         }
-        todo!()
+        for tag in self.syntax_graph.get_child_tags(self.current_tag) {
+          if self.text[character_index..]
+            .starts_with(self.syntax_graph.get_beginning_marker(tag))
+          {
+            todo!()
+          }
+        }
+        loop {
+          match indexed_characters.peek() {
+            Some((next_character_index, next_character)) => {
+              if is_whitespace(*next_character) {
+                self.push_sexp(Sexp::Leaf(
+                  &self.text[character_index..*next_character_index],
+                ));
+                break;
+              }
+            }
+            None => {
+              return if self.partial_sexps.is_empty() {
+                Ok(Sexp::Leaf(&self.text[character_index..]))
+              } else {
+                Err(ParseError::EndOfText)
+              }
+            }
+          }
+          indexed_characters.next();
+        }
       }
     }
+    Err(ParseError::EndOfText)
   }
 }
 

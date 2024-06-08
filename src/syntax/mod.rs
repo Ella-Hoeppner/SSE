@@ -105,4 +105,14 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
+  pub fn get_beginning_marker(&self, tag: &Tag) -> &str {
+    match &self.syntax_elements[tag] {
+      SyntaxElement::Encloser(encloser) => encloser.opening_encloser_str(),
+      SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
+        symmetric_encloser.encloser_str()
+      }
+      SyntaxElement::Operator(operator) => operator.op_str(),
+      SyntaxElement::_Unusable(_, _) => unreachable!(),
+    }
+  }
 }

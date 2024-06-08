@@ -8,19 +8,38 @@ pub use parse::Parser;
 #[cfg(test)]
 mod tests {
   use crate::{
-    sexp::Sexp::*, syntax::str_tagged::StringTaggedSyntaxGraph, Parser,
+    sexp::Sexp::{self, *},
+    syntax::str_tagged::{
+      StringTaggedEncloser, StringTaggedOperator,
+      StringTaggedSymmetricEncloser, StringTaggedSyntaxGraph,
+    },
+    Parser,
   };
 
+  fn sexp_parser<'s>() -> Parser<
+    &'s str,
+    StringTaggedEncloser<'s>,
+    StringTaggedSymmetricEncloser<'s>,
+    StringTaggedOperator<'s>,
+  > {
+    Parser::new(StringTaggedSyntaxGraph::contextless_from_descriptions(
+      "",
+      vec![("", "(", ")")],
+      vec![],
+    ))
+  }
+
+  fn assert_sexp_parse(text: &str, sexp: Sexp) {
+    assert_eq!(sexp_parser().parse(text), Ok(sexp))
+  }
+
   #[test]
-  fn basic_sexp() {
-    let text = "(+ 1 2)";
-    let expected_sexp = List(vec![Leaf("+"), Leaf("1"), Leaf("2")]);
-    let parser =
-      Parser::new(StringTaggedSyntaxGraph::contextless_from_descriptions(
-        "",
-        vec![("", "(", ")")],
-        vec![],
-      ));
-    assert_eq!(parser.parse(text), Ok(expected_sexp))
+  fn sexp_terminal() {
+    assert_sexp_parse("1", Leaf("1"));
+  }
+
+  #[test]
+  fn sexp_list() {
+    assert_sexp_parse("(+ 1 2)", List(vec![Leaf("+"), Leaf("1"), Leaf("2")]));
   }
 }
