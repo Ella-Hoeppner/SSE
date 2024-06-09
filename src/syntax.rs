@@ -118,6 +118,14 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
+  pub(crate) fn get_left_arg_count(&self, tag: &Tag) -> usize {
+    match &self.syntax_elements[tag] {
+      SyntaxElement::Encloser(_) => 0,
+      SyntaxElement::SymmetricEncloser(_) => 0,
+      SyntaxElement::Operator(operator) => operator.left_args(),
+      SyntaxElement::_Unusable(_, _) => unreachable!(),
+    }
+  }
   pub(crate) fn get_tag_scope(&self, tag: &Tag) -> SyntaxScope {
     match &self.syntax_elements[tag] {
       SyntaxElement::Encloser(encloser) => SyntaxScope::Enclosed {
@@ -135,16 +143,37 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
+  pub(crate) fn get_active_closers(&'s self, tag: &Tag) -> Vec<&'s str> {
+    match &self.syntax_elements[tag] {
+      SyntaxElement::Encloser(encloser) => encloser.child_tags(),
+      SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
+        symmetric_encloser.child_tags()
+      }
+      SyntaxElement::Operator(operator) => operator.child_tags(),
+      SyntaxElement::_Unusable(_, _) => unreachable!(),
+    }
+    .iter()
+    .filter_map(|child_tag| {
+      if let SyntaxScope::Enclosed { awaited_closer } =
+        self.get_tag_scope(child_tag)
+      {
+        Some(awaited_closer)
+      } else {
+        None
+      }
+    })
+    .collect()
+  }
   pub fn parse(
     &'s self,
     text: &'s str,
-  ) -> Result<TaggedSexp<'s, Tag>, ParseError<'s>> {
+  ) -> Result<TaggedSexp<'s, Tag>, ParseError> {
     Parse::new(&self, text).complete()
   }
   pub fn parse_to_sexp(
     &'s self,
     text: &'s str,
-  ) -> Result<Sexp<'s>, ParseError<'s>> {
+  ) -> Result<Sexp<'s>, ParseError> {
     self.parse(text).map(|tagged_sexp| tagged_sexp.into())
   }
 }

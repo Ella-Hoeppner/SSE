@@ -146,7 +146,7 @@ mod tests {
   fn mismatched_brackets_cause_error() {
     assert_eq!(
       multi_bracket_graph().parse_to_sexp("([)]"),
-      Err(ParseError::UnexpectedCloser("]"))
+      Err(ParseError::UnexpectedCloser("]".to_string()))
     );
   }
 
@@ -170,7 +170,7 @@ mod tests {
   }
 
   #[test]
-  fn infix_op() {
+  fn top_level_infix_op() {
     assert_eq!(
       StringTaggedSyntaxGraph::contextless(
         "",
@@ -183,6 +183,48 @@ mod tests {
   }
 
   #[test]
+  fn infix_op_in_list() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextless(
+        "",
+        vec![("", "(", ")")],
+        vec![("PLUS", "+", 1, 1)],
+      )
+      .parse_to_sexp("(1+2)"),
+      Ok(List(vec![List(vec![Leaf("PLUS"), Leaf("1"), Leaf("2")])]))
+    );
+  }
+
+  #[test]
+  fn terminals_after_infix_op_in_list() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextless(
+        "",
+        vec![("", "(", ")")],
+        vec![("PLUS", "+", 1, 1)],
+      )
+      .parse_to_sexp("(1+2 3)"),
+      Ok(List(vec![
+        List(vec![Leaf("PLUS"), Leaf("1"), Leaf("2")]),
+        Leaf("3")
+      ]))
+    );
+  }
+
+  #[test]
+  fn op_missing_left_arg_causes_error() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextless(
+        "",
+        vec![("", "(", ")")],
+        vec![("PLUS", "+", 1, 1)],
+      )
+      .parse_to_sexp("(+2)"),
+      Err(ParseError::MissingLeftArgument)
+    );
+  }
+
+  #[test]
   fn unfinished_infix_op_causes_error() {
     assert_eq!(
       StringTaggedSyntaxGraph::contextless(
@@ -191,7 +233,20 @@ mod tests {
         vec![("PLUS", "+", 1, 1)],
       )
       .parse_to_sexp("(1+)"),
-      Err(ParseError::UnexpectedCloser(")"))
+      Err(ParseError::MissingRightArgument)
+    );
+  }
+
+  #[test]
+  fn unfinished_top_level_infix_op_causes_error() {
+    assert_eq!(
+      StringTaggedSyntaxGraph::contextless(
+        "",
+        vec![("", "(", ")")],
+        vec![("PLUS", "+", 1, 1)],
+      )
+      .parse_to_sexp("1+"),
+      Err(ParseError::MissingRightArgument)
     );
   }
 
@@ -226,12 +281,12 @@ mod tests {
         ],
         vec![("COLON", ":", 1, 1, vec!["", "ANGLE", "COLON"])],
       )
-      .parse_to_sexp("(> 1 0) : <Bool>"),
-      Ok(List(vec![
+      .parse_to_sexp("((> 1 0) : <Bool>)"),
+      Ok(List(vec![List(vec![
         Leaf("COLON"),
         List(vec![Leaf(">"), Leaf("1"), Leaf("0")]),
         List(vec![Leaf("ANGLE"), Leaf("Bool")])
-      ]))
+      ])]))
     );
   }
 }

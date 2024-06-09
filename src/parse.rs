@@ -8,19 +8,27 @@ use crate::{
   },
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ParseError<'s> {
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ParseError {
   EndOfText,
-  UnexpectedCloser(&'s str),
+  UnexpectedCloser(String),
+  MissingLeftArgument,
+  MissingRightArgument,
 }
 
-impl<'s> Display for ParseError<'s> {
+impl Display for ParseError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     use ParseError::*;
     match self {
       EndOfText => write!(f, "end of text while parsing"),
       UnexpectedCloser(closer) => {
         write!(f, "unexpected closer {} while parsing", closer)
+      }
+      MissingLeftArgument => {
+        write!(f, "operator missing left argument")
+      }
+      MissingRightArgument => {
+        write!(f, "operator missing right argument")
       }
     }
   }
@@ -56,6 +64,24 @@ impl<
       partial_sexps: vec![],
     }
   }
+  fn consume_left_sexps(
+    &mut self,
+    n: usize,
+  ) -> Result<Vec<TaggedSexp<'s, Tag>>, ParseError> {
+    if n == 0 {
+      Ok(vec![])
+    } else {
+      if let Some((_, subsexps)) = self.partial_sexps.last_mut() {
+        if subsexps.len() >= n {
+          Ok(subsexps.split_off(subsexps.len() - n))
+        } else {
+          Err(ParseError::MissingLeftArgument)
+        }
+      } else {
+        todo!()
+      }
+    }
+  }
   fn close_sexp(&mut self) -> Option<TaggedSexp<'s, Tag>> {
     let (tag, sub_sexps) = self
       .partial_sexps
@@ -63,6 +89,14 @@ impl<
       .expect("called close_sexp with no open partial sexp");
     let finished_sexp = TaggedSexp::List((tag, sub_sexps));
     self.push_closed_sexp(finished_sexp)
+  }
+  fn is_scope_operator(&self) -> Option<bool> {
+    self.partial_sexps.last().map(|(tag, subsexps)| {
+      match self.syntax_graph.get_tag_scope(tag) {
+        SyntaxScope::Enclosed { .. } => false,
+        SyntaxScope::Operated { .. } => true,
+      }
+    })
   }
   fn push_closed_sexp(
     &mut self,
@@ -87,9 +121,23 @@ impl<
       Some(sexp)
     }
   }
-  pub(crate) fn complete(
-    &mut self,
-  ) -> Result<TaggedSexp<'s, Tag>, ParseError<'s>> {
+  fn awaited_closer(&self) -> Option<&'s str> {
+    self
+      .partial_sexps
+      .iter()
+      .rev()
+      .filter_map(|open_sexp| {
+        if let SyntaxScope::Enclosed { awaited_closer } =
+          self.syntax_graph.get_tag_scope(&open_sexp.0)
+        {
+          return Some(awaited_closer);
+        } else {
+          None
+        }
+      })
+      .next()
+  }
+  pub(crate) fn complete(&mut self) -> Result<TaggedSexp<'s, Tag>, ParseError> {
     let mut current_terminal_beginning: Option<usize> = None;
     let mut indexed_characters = self
       .text
@@ -121,13 +169,13 @@ impl<
       if is_whitespace(character) {
         finish_terminal!();
       } else {
-        let open_sexp = self.partial_sexps.last();
-        if let Some(SyntaxScope::Enclosed { awaited_closer }) =
-          open_sexp.map(|(tag, _subsexps)| self.syntax_graph.get_tag_scope(tag))
-        {
+        if let Some(awaited_closer) = self.awaited_closer() {
           if self.text[character_index..].starts_with(awaited_closer) {
             finish_terminal!();
             let closer_len = awaited_closer.len();
+            if self.is_scope_operator() == Some(true) {
+              return Err(ParseError::MissingRightArgument);
+            }
             if let Some(completed_sexp) = self.close_sexp() {
               return Ok(completed_sexp);
             } else {
@@ -146,8 +194,9 @@ impl<
           let beginning_marker = self.syntax_graph.get_beginning_marker(tag);
           if self.text[character_index..].starts_with(beginning_marker) {
             finish_terminal!();
-            //todo! handle operators consuming args to the left
-            self.partial_sexps.push((tag.clone(), vec![]));
+            let leftward_args = self
+              .consume_left_sexps(self.syntax_graph.get_left_arg_count(tag))?;
+            self.partial_sexps.push((tag.clone(), leftward_args));
             skip_n_chars!(beginning_marker.len());
             continue 'outer;
           }
