@@ -14,7 +14,6 @@ pub trait SyntaxTag<'s>: Clone + Debug + PartialEq + Eq + Hash {
 
 pub trait Syntax<'s, Tag: SyntaxTag<'s>>: Clone + Debug {
   fn tag(&self) -> Tag;
-  fn child_tags(&self) -> &[Tag];
 }
 
 pub trait Encloser<'s, Tag: SyntaxTag<'s>>: Syntax<'s, Tag> {
@@ -46,6 +45,20 @@ pub enum SyntaxElement<
   _Unusable(PhantomData<&'s Tag>, Infallible),
 }
 
+#[derive(Clone)]
+pub struct SyntaxContext<'s, Tag: SyntaxTag<'s>> {
+  _phantom: PhantomData<&'s ()>,
+  tags: Vec<Tag>,
+}
+impl<'s, Tag: SyntaxTag<'s>> SyntaxContext<'s, Tag> {
+  pub fn new(tags: Vec<Tag>) -> Self {
+    Self {
+      _phantom: PhantomData,
+      tags,
+    }
+  }
+}
+
 pub(crate) enum SyntaxScope<'s> {
   Enclosed { awaited_closer: &'s str },
   Operated { left_args: usize, right_args: usize },
@@ -54,62 +67,59 @@ pub(crate) enum SyntaxScope<'s> {
 pub struct SyntaxGraph<
   's,
   Tag: SyntaxTag<'s>,
+  ContextTag: Clone + Debug + PartialEq + Eq + Hash,
   E: Encloser<'s, Tag>,
   SE: SymmetricEncloser<'s, Tag>,
   O: Operator<'s, Tag>,
 > {
   pub(crate) root: Tag,
-  syntax_elements: HashMap<Tag, SyntaxElement<'s, Tag, E, SE, O>>,
+  contexts: HashMap<ContextTag, SyntaxContext<'s, Tag>>,
+  syntax_elements: HashMap<Tag, (SyntaxElement<'s, Tag, E, SE, O>, ContextTag)>,
 }
 
 impl<
     's,
     Tag: SyntaxTag<'s>,
+    ContextTag: Clone + Debug + PartialEq + Eq + Hash,
     E: Encloser<'s, Tag>,
     SE: SymmetricEncloser<'s, Tag>,
     O: Operator<'s, Tag>,
-  > SyntaxGraph<'s, Tag, E, SE, O>
+  > SyntaxGraph<'s, Tag, ContextTag, E, SE, O>
 {
-  pub fn new(root: Tag) -> Self {
+  pub fn new(
+    root: Tag,
+    contexts: HashMap<ContextTag, SyntaxContext<'s, Tag>>,
+    enclosers: Vec<(Tag, E, ContextTag)>,
+    symmetric_enclosers: Vec<(Tag, SE, ContextTag)>,
+    operators: Vec<(Tag, O, ContextTag)>,
+  ) -> Self {
+    let mut syntax_elements = HashMap::new();
+    for (tag, encloser, context) in enclosers {
+      syntax_elements.insert(tag, (SyntaxElement::Encloser(encloser), context));
+    }
+    for (tag, symmetric_encloser, context) in symmetric_enclosers {
+      syntax_elements.insert(
+        tag,
+        (
+          SyntaxElement::SymmetricEncloser(symmetric_encloser),
+          context,
+        ),
+      );
+    }
+    for (tag, operator, context) in operators {
+      syntax_elements.insert(tag, (SyntaxElement::Operator(operator), context));
+    }
     Self {
       root,
-      syntax_elements: HashMap::new(),
+      contexts,
+      syntax_elements,
     }
-  }
-  pub fn with_encloser(mut self, tag: Tag, encloser: E) -> Self {
-    self
-      .syntax_elements
-      .insert(tag, SyntaxElement::Encloser(encloser));
-    self
-  }
-  pub fn with_symmetric_encloser(
-    mut self,
-    tag: Tag,
-    symmetric_encloser: SE,
-  ) -> Self {
-    self
-      .syntax_elements
-      .insert(tag, SyntaxElement::SymmetricEncloser(symmetric_encloser));
-    self
-  }
-  pub fn with_operator(mut self, tag: Tag, operator: O) -> Self {
-    self
-      .syntax_elements
-      .insert(tag, SyntaxElement::Operator(operator));
-    self
   }
   pub fn get_child_tags(&self, tag: &Tag) -> &[Tag] {
-    match &self.syntax_elements[tag] {
-      SyntaxElement::Encloser(encloser) => encloser.child_tags(),
-      SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
-        symmetric_encloser.child_tags()
-      }
-      SyntaxElement::Operator(operator) => operator.child_tags(),
-      SyntaxElement::_Unusable(_, _) => unreachable!(),
-    }
+    &self.contexts[&self.syntax_elements[tag].1].tags
   }
   pub(crate) fn get_beginning_marker(&self, tag: &Tag) -> &str {
-    match &self.syntax_elements[tag] {
+    match &self.syntax_elements[tag].0 {
       SyntaxElement::Encloser(encloser) => encloser.opening_encloser_str(),
       SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
         symmetric_encloser.encloser_str()
@@ -119,7 +129,7 @@ impl<
     }
   }
   pub(crate) fn get_left_arg_count(&self, tag: &Tag) -> usize {
-    match &self.syntax_elements[tag] {
+    match &self.syntax_elements[tag].0 {
       SyntaxElement::Encloser(_) => 0,
       SyntaxElement::SymmetricEncloser(_) => 0,
       SyntaxElement::Operator(operator) => operator.left_args(),
@@ -127,7 +137,7 @@ impl<
     }
   }
   pub(crate) fn get_tag_scope(&self, tag: &Tag) -> SyntaxScope {
-    match &self.syntax_elements[tag] {
+    match &self.syntax_elements[tag].0 {
       SyntaxElement::Encloser(encloser) => SyntaxScope::Enclosed {
         awaited_closer: encloser.closing_encloser_str(),
       },
@@ -143,7 +153,7 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
-  pub(crate) fn get_active_closers(&'s self, tag: &Tag) -> Vec<&'s str> {
+  /*pub(crate) fn get_active_closers(&'s self, tag: &Tag) -> Vec<&'s str> {
     match &self.syntax_elements[tag] {
       SyntaxElement::Encloser(encloser) => encloser.child_tags(),
       SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
@@ -163,7 +173,7 @@ impl<
       }
     })
     .collect()
-  }
+  }*/
   pub fn parse(
     &'s self,
     text: &'s str,

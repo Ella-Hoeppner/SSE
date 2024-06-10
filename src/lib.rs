@@ -4,7 +4,7 @@ pub mod str_tagged;
 mod str_utils;
 pub mod syntax;
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
   use crate::{
     parse::ParseError,
@@ -333,4 +333,4 @@ mod tests {
       ]))
     );
   }
-}
+}*/

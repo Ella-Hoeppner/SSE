@@ -1,4 +1,7 @@
-use std::fmt::{Debug, Display};
+use std::{
+  fmt::{Debug, Display},
+  hash::Hash,
+};
 
 use crate::{
   sexp::{TaggedSexp, TaggedSexpList},
@@ -37,25 +40,27 @@ impl Display for ParseError {
 pub(crate) struct Parse<
   's,
   Tag: SyntaxTag<'s>,
+  ContextTag: Clone + Debug + PartialEq + Eq + Hash,
   E: Encloser<'s, Tag>,
   SE: SymmetricEncloser<'s, Tag>,
   O: Operator<'s, Tag>,
 > {
   text: &'s str,
-  syntax_graph: &'s SyntaxGraph<'s, Tag, E, SE, O>,
+  syntax_graph: &'s SyntaxGraph<'s, Tag, ContextTag, E, SE, O>,
   partial_sexps: Vec<TaggedSexpList<'s, Tag>>,
 }
 
 impl<
     's,
     Tag: SyntaxTag<'s>,
+    ContextTag: Clone + Debug + PartialEq + Eq + Hash,
     E: Encloser<'s, Tag>,
     SE: SymmetricEncloser<'s, Tag>,
     O: Operator<'s, Tag>,
-  > Parse<'s, Tag, E, SE, O>
+  > Parse<'s, Tag, ContextTag, E, SE, O>
 {
   pub(crate) fn new(
-    syntax_graph: &'s SyntaxGraph<'s, Tag, E, SE, O>,
+    syntax_graph: &'s SyntaxGraph<'s, Tag, ContextTag, E, SE, O>,
     text: &'s str,
   ) -> Self {
     Self {
@@ -91,7 +96,7 @@ impl<
     self.push_closed_sexp(finished_sexp)
   }
   fn is_scope_operator(&self) -> Option<bool> {
-    self.partial_sexps.last().map(|(tag, subsexps)| {
+    self.partial_sexps.last().map(|(tag, _)| {
       match self.syntax_graph.get_tag_scope(tag) {
         SyntaxScope::Enclosed { .. } => false,
         SyntaxScope::Operated { .. } => true,

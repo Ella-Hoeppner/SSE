@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use crate::syntax::{
-  Encloser, Operator, SymmetricEncloser, Syntax, SyntaxGraph, SyntaxTag,
+  Encloser, Operator, SymmetricEncloser, Syntax, SyntaxContext, SyntaxGraph,
+  SyntaxTag,
 };
 
 impl<'s> SyntaxTag<'s> for &'s str {
@@ -13,7 +16,6 @@ pub struct StringTaggedEncloser<'s> {
   tag: &'s str,
   opener: &'s str,
   closer: &'s str,
-  child_tags: Vec<&'s str>,
 }
 impl<'s> StringTaggedEncloser<'s> {
   pub fn new(tag: &'s str, opener: &'s str, closer: &'s str) -> Self {
@@ -21,21 +23,12 @@ impl<'s> StringTaggedEncloser<'s> {
       tag,
       opener,
       closer,
-      child_tags: vec![],
     }
-  }
-  pub fn with_child_tags(mut self, child_tags: Vec<&'s str>) -> Self {
-    self.child_tags = child_tags;
-    self
   }
 }
 impl<'s> Syntax<'s, &'s str> for StringTaggedEncloser<'s> {
   fn tag(&self) -> &'s str {
     self.tag
-  }
-
-  fn child_tags(&self) -> &[&'s str] {
-    &self.child_tags
   }
 }
 impl<'s> Encloser<'s, &'s str> for StringTaggedEncloser<'s> {
@@ -52,28 +45,15 @@ impl<'s> Encloser<'s, &'s str> for StringTaggedEncloser<'s> {
 pub struct StringTaggedSymmetricEncloser<'s> {
   tag: &'s str,
   encloser: &'s str,
-  child_tags: Vec<&'s str>,
 }
 impl<'s> StringTaggedSymmetricEncloser<'s> {
   pub fn new(tag: &'s str, encloser: &'s str) -> Self {
-    Self {
-      tag,
-      encloser,
-      child_tags: vec![],
-    }
-  }
-  pub fn with_child_tags(mut self, child_tags: Vec<&'s str>) -> Self {
-    self.child_tags = child_tags;
-    self
+    Self { tag, encloser }
   }
 }
 impl<'s> Syntax<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
   fn tag(&self) -> &'s str {
     self.tag
-  }
-
-  fn child_tags(&self) -> &[&'s str] {
-    &self.child_tags
   }
 }
 impl<'s> SymmetricEncloser<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
@@ -88,7 +68,6 @@ pub struct StringTaggedOperator<'s> {
   operator: &'s str,
   left_args: usize,
   right_args: usize,
-  child_tags: Vec<&'s str>,
 }
 impl<'s> StringTaggedOperator<'s> {
   pub fn new(
@@ -102,21 +81,12 @@ impl<'s> StringTaggedOperator<'s> {
       operator,
       left_args,
       right_args,
-      child_tags: vec![],
     }
-  }
-  pub fn with_child_tags(mut self, child_tags: Vec<&'s str>) -> Self {
-    self.child_tags = child_tags;
-    self
   }
 }
 impl<'s> Syntax<'s, &'s str> for StringTaggedOperator<'s> {
   fn tag(&self) -> &'s str {
     self.tag
-  }
-
-  fn child_tags(&self) -> &[&'s str] {
-    &self.child_tags
   }
 }
 impl<'s> Operator<'s, &'s str> for StringTaggedOperator<'s> {
@@ -136,65 +106,81 @@ impl<'s> Operator<'s, &'s str> for StringTaggedOperator<'s> {
 pub type StringTaggedSyntaxGraph<'s> = SyntaxGraph<
   's,
   &'s str,
+  &'s str,
   StringTaggedEncloser<'s>,
   StringTaggedSymmetricEncloser<'s>,
   StringTaggedOperator<'s>,
 >;
 
 impl<'s> StringTaggedSyntaxGraph<'s> {
-  pub fn contextful(
+  pub fn from_descriptions(
     root: &'s str,
-    enclosers: Vec<(&'s str, &'s str, &'s str, Vec<&'s str>)>,
-    operators: Vec<(&'s str, &'s str, usize, usize, Vec<&'s str>)>,
+    context_descriptions: Vec<(&'s str, Vec<&'s str>)>,
+    encloser_descriptions: Vec<(&'s str, &'s str, &'s str, &'s str)>,
+    operator_descriptions: Vec<(&'s str, &'s str, usize, usize, &'s str)>,
   ) -> Self {
-    operators.into_iter().fold(
-      enclosers.into_iter().fold(
-        Self::new(root),
-        |graph, (tag, opener, closer, child_tags)| {
-          if opener == closer {
-            graph.with_symmetric_encloser(
-              tag,
-              StringTaggedSymmetricEncloser::new(tag, opener)
-                .with_child_tags(child_tags),
-            )
-          } else {
-            graph.with_encloser(
-              tag,
-              StringTaggedEncloser::new(tag, opener, closer)
-                .with_child_tags(child_tags),
-            )
-          }
-        },
-      ),
-      |graph, (tag, operator, left_args, right_args, child_tags)| {
-        graph.with_operator(
+    let mut enclosers = vec![];
+    let mut symmetric_enclosers = vec![];
+    for (tag, opener, closer, context_tag) in encloser_descriptions {
+      if opener == closer {
+        symmetric_enclosers.push((
           tag,
-          StringTaggedOperator::new(tag, operator, left_args, right_args)
-            .with_child_tags(child_tags),
-        )
-      },
+          StringTaggedSymmetricEncloser::new(tag, opener),
+          context_tag,
+        ));
+      } else {
+        enclosers.push((
+          tag,
+          StringTaggedEncloser::new(tag, opener, closer),
+          context_tag,
+        ));
+      }
+    }
+    Self::new(
+      root,
+      context_descriptions
+        .into_iter()
+        .map(|(context_name, internal_tags)| {
+          (context_name, SyntaxContext::new(internal_tags))
+        })
+        .collect::<HashMap<_, _>>(),
+      enclosers,
+      symmetric_enclosers,
+      operator_descriptions
+        .into_iter()
+        .map(|(tag, operator, left_args, right_args, context_tag)| {
+          (
+            tag,
+            StringTaggedOperator::new(tag, operator, left_args, right_args),
+            context_tag,
+          )
+        })
+        .collect(),
     )
   }
-  pub fn contextless(
-    root: &'s str,
-    enclosers: Vec<(&'s str, &'s str, &'s str)>,
-    operators: Vec<(&'s str, &'s str, usize, usize)>,
+  pub fn contextless_from_descriptions(
+    encloser_descriptions: Vec<(&'s str, &'s str, &'s str)>,
+    operator_descriptions: Vec<(&'s str, &'s str, usize, usize)>,
   ) -> Self {
-    let tags: Vec<&'s str> = enclosers
-      .iter()
-      .map(|(tag, _, _)| *tag)
-      .chain(operators.iter().map(|(tag, _, _, _)| *tag))
-      .collect();
-    Self::contextful(
-      root,
-      enclosers
+    Self::from_descriptions(
+      "",
+      vec![(
+        "",
+        encloser_descriptions
+          .iter()
+          .map(|(tag, _, _)| tag)
+          .chain(operator_descriptions.iter().map(|(tag, _, _, _)| tag))
+          .cloned()
+          .collect(),
+      )],
+      encloser_descriptions
         .into_iter()
-        .map(|(tag, opener, closer)| (tag, opener, closer, tags.clone()))
+        .map(|(tag, opener, closer)| (tag, opener, closer, ""))
         .collect(),
-      operators
+      operator_descriptions
         .into_iter()
-        .map(|(tag, marker, left_args, right_args)| {
-          (tag, marker, left_args, right_args, tags.clone())
+        .map(|(tag, operator, left_args, right_args)| {
+          (tag, operator, left_args, right_args, "")
         })
         .collect(),
     )
