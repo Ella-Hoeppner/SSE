@@ -26,6 +26,20 @@ mod tests {
     StringTaggedSyntaxGraph::contextless("", vec![("", "(", ")")], vec![])
   }
 
+  fn pipe_sexp_graph<'s>() -> SyntaxGraph<
+    's,
+    &'s str,
+    StringTaggedEncloser<'s>,
+    StringTaggedSymmetricEncloser<'s>,
+    StringTaggedOperator<'s>,
+  > {
+    StringTaggedSyntaxGraph::contextless(
+      "",
+      vec![("", "(", ")"), ("PIPE", "|", "|")],
+      vec![],
+    )
+  }
+
   fn quote_sexp_graph<'s>() -> SyntaxGraph<
     's,
     &'s str,
@@ -287,6 +301,36 @@ mod tests {
         List(vec![Leaf(">"), Leaf("1"), Leaf("0")]),
         List(vec![Leaf("ANGLE"), Leaf("Bool")])
       ])]))
+    );
+  }
+
+  #[test]
+  fn symmetric_encloser() {
+    assert_eq!(
+      pipe_sexp_graph().parse_to_sexp("|+ 1 2|"),
+      Ok(List(vec![Leaf("PIPE"), Leaf("+"), Leaf("1"), Leaf("2"),]))
+    );
+  }
+
+  #[test]
+  fn symmetric_enclosers_in_list() {
+    assert_eq!(
+      pipe_sexp_graph().parse_to_sexp("(|+ 1 2| |a|)"),
+      Ok(List(vec![
+        List(vec![Leaf("PIPE"), Leaf("+"), Leaf("1"), Leaf("2")]),
+        List(vec![Leaf("PIPE"), Leaf("a")])
+      ]))
+    );
+  }
+
+  #[test]
+  fn nested_symmetric_enclosers() {
+    assert_eq!(
+      pipe_sexp_graph().parse_to_sexp("|(|a|)|"),
+      Ok(List(vec![
+        Leaf("PIPE"),
+        List(vec![List(vec![Leaf("PIPE"), Leaf("a")])])
+      ]))
     );
   }
 }
