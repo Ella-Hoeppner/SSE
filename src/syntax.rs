@@ -12,20 +12,16 @@ pub trait SyntaxTag<'s>: Clone + Debug + PartialEq + Eq + Hash {
   fn tag_str(&self) -> &'s str;
 }
 
-pub trait Syntax<'s, Tag: SyntaxTag<'s>>: Clone + Debug {
-  fn tag(&self) -> Tag;
-}
-
-pub trait Encloser<'s, Tag: SyntaxTag<'s>>: Syntax<'s, Tag> {
+pub trait Encloser<'s, Tag: SyntaxTag<'s>> {
   fn opening_encloser_str(&self) -> &str;
   fn closing_encloser_str(&self) -> &str;
 }
 
-pub trait SymmetricEncloser<'s, Tag: SyntaxTag<'s>>: Syntax<'s, Tag> {
+pub trait SymmetricEncloser<'s, Tag: SyntaxTag<'s>> {
   fn encloser_str(&self) -> &str;
 }
 
-pub trait Operator<'s, Tag: SyntaxTag<'s>>: Syntax<'s, Tag> {
+pub trait Operator<'s, Tag: SyntaxTag<'s>> {
   fn left_args(&self) -> usize;
   fn right_args(&self) -> usize;
   fn op_str(&self) -> &str;
@@ -45,7 +41,7 @@ pub enum SyntaxElement<
   _Unusable(PhantomData<&'s Tag>, Infallible),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SyntaxContext<'s, Tag: SyntaxTag<'s>> {
   _phantom: PhantomData<&'s ()>,
   tags: Vec<Tag>,
@@ -56,6 +52,9 @@ impl<'s, Tag: SyntaxTag<'s>> SyntaxContext<'s, Tag> {
       _phantom: PhantomData,
       tags,
     }
+  }
+  pub fn tags(&self) -> &[Tag] {
+    &self.tags
   }
 }
 
@@ -72,7 +71,7 @@ pub struct SyntaxGraph<
   SE: SymmetricEncloser<'s, Tag>,
   O: Operator<'s, Tag>,
 > {
-  pub(crate) root: Tag,
+  pub(crate) root: ContextTag,
   contexts: HashMap<ContextTag, SyntaxContext<'s, Tag>>,
   syntax_elements: HashMap<Tag, (SyntaxElement<'s, Tag, E, SE, O>, ContextTag)>,
 }
@@ -87,7 +86,7 @@ impl<
   > SyntaxGraph<'s, Tag, ContextTag, E, SE, O>
 {
   pub fn new(
-    root: Tag,
+    root: ContextTag,
     contexts: HashMap<ContextTag, SyntaxContext<'s, Tag>>,
     enclosers: Vec<(Tag, E, ContextTag)>,
     symmetric_enclosers: Vec<(Tag, SE, ContextTag)>,
@@ -115,8 +114,14 @@ impl<
       syntax_elements,
     }
   }
-  pub fn get_child_tags(&self, tag: &Tag) -> &[Tag] {
-    &self.contexts[&self.syntax_elements[tag].1].tags
+  pub fn get_context(
+    &self,
+    context_tag: &ContextTag,
+  ) -> &SyntaxContext<'s, Tag> {
+    &self.contexts[&context_tag]
+  }
+  pub fn get_context_tag(&self, tag: &Tag) -> &ContextTag {
+    &self.syntax_elements[tag].1
   }
   pub(crate) fn get_beginning_marker(&self, tag: &Tag) -> &str {
     match &self.syntax_elements[tag].0 {

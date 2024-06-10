@@ -4,65 +4,35 @@ pub mod str_tagged;
 mod str_utils;
 pub mod syntax;
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
   use crate::{
-    parse::ParseError,
-    sexp::Sexp::*,
-    str_tagged::{
-      StringTaggedEncloser, StringTaggedOperator,
-      StringTaggedSymmetricEncloser, StringTaggedSyntaxGraph,
-    },
-    syntax::SyntaxGraph,
+    parse::ParseError, sexp::Sexp::*, str_tagged::StringTaggedSyntaxGraph,
   };
 
-  fn sexp_graph<'s>() -> SyntaxGraph<
-    's,
-    &'s str,
-    StringTaggedEncloser<'s>,
-    StringTaggedSymmetricEncloser<'s>,
-    StringTaggedOperator<'s>,
-  > {
-    StringTaggedSyntaxGraph::contextless("", vec![("", "(", ")")], vec![])
+  fn sexp_graph<'s>() -> StringTaggedSyntaxGraph<'s> {
+    StringTaggedSyntaxGraph::contextless_from_descriptions(
+      vec![("", "(", ")")],
+      vec![],
+    )
   }
 
-  fn pipe_sexp_graph<'s>() -> SyntaxGraph<
-    's,
-    &'s str,
-    StringTaggedEncloser<'s>,
-    StringTaggedSymmetricEncloser<'s>,
-    StringTaggedOperator<'s>,
-  > {
-    StringTaggedSyntaxGraph::contextless(
-      "",
+  fn pipe_sexp_graph<'s>() -> StringTaggedSyntaxGraph<'s> {
+    StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![("", "(", ")"), ("PIPE", "|", "|")],
       vec![],
     )
   }
 
-  fn quote_sexp_graph<'s>() -> SyntaxGraph<
-    's,
-    &'s str,
-    StringTaggedEncloser<'s>,
-    StringTaggedSymmetricEncloser<'s>,
-    StringTaggedOperator<'s>,
-  > {
-    StringTaggedSyntaxGraph::contextless(
-      "",
+  fn quote_sexp_graph<'s>() -> StringTaggedSyntaxGraph<'s> {
+    StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![("", "(", ")")],
       vec![("QUOTE", "'", 0, 1)],
     )
   }
 
-  fn multi_bracket_graph<'s>() -> SyntaxGraph<
-    's,
-    &'s str,
-    StringTaggedEncloser<'s>,
-    StringTaggedSymmetricEncloser<'s>,
-    StringTaggedOperator<'s>,
-  > {
-    StringTaggedSyntaxGraph::contextless(
-      "",
+  fn multi_bracket_graph<'s>() -> StringTaggedSyntaxGraph<'s> {
+    StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![
         ("", "(", ")"),
         (":SQUARE", "[", "]"),
@@ -186,8 +156,7 @@ mod tests {
   #[test]
   fn top_level_infix_op() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextless(
-        "",
+      StringTaggedSyntaxGraph::contextless_from_descriptions(
         vec![("", "(", ")")],
         vec![("PLUS", "+", 1, 1)],
       )
@@ -199,8 +168,7 @@ mod tests {
   #[test]
   fn infix_op_in_list() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextless(
-        "",
+      StringTaggedSyntaxGraph::contextless_from_descriptions(
         vec![("", "(", ")")],
         vec![("PLUS", "+", 1, 1)],
       )
@@ -212,8 +180,7 @@ mod tests {
   #[test]
   fn terminals_after_infix_op_in_list() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextless(
-        "",
+      StringTaggedSyntaxGraph::contextless_from_descriptions(
         vec![("", "(", ")")],
         vec![("PLUS", "+", 1, 1)],
       )
@@ -228,8 +195,7 @@ mod tests {
   #[test]
   fn op_missing_left_arg_causes_error() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextless(
-        "",
+      StringTaggedSyntaxGraph::contextless_from_descriptions(
         vec![("", "(", ")")],
         vec![("PLUS", "+", 1, 1)],
       )
@@ -241,8 +207,7 @@ mod tests {
   #[test]
   fn unfinished_infix_op_causes_error() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextless(
-        "",
+      StringTaggedSyntaxGraph::contextless_from_descriptions(
         vec![("", "(", ")")],
         vec![("PLUS", "+", 1, 1)],
       )
@@ -254,8 +219,7 @@ mod tests {
   #[test]
   fn unfinished_top_level_infix_op_causes_error() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextless(
-        "",
+      StringTaggedSyntaxGraph::contextless_from_descriptions(
         vec![("", "(", ")")],
         vec![("PLUS", "+", 1, 1)],
       )
@@ -267,12 +231,16 @@ mod tests {
   #[test]
   fn contextful_brackets() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextful(
-        "",
+      StringTaggedSyntaxGraph::from_descriptions(
+        "root",
         vec![
-          ("", "(", ")", vec!["", "SQUARE"]),
-          ("SQUARE", "[", "]", vec!["", "SQUARE", "ANGLE"]),
-          ("ANGLE", "<", ">", vec!["", "SQUARE", "ANGLE"])
+          ("root", vec!["", "SQUARE"]),
+          ("include_angle", vec!["", "SQUARE", "ANGLE"])
+        ],
+        vec![
+          ("", "(", ")", "root"),
+          ("SQUARE", "[", "]", "include_angle"),
+          ("ANGLE", "<", ">", "include_angle")
         ],
         vec![]
       )
@@ -287,13 +255,14 @@ mod tests {
   #[test]
   fn contextful_operator() {
     assert_eq!(
-      StringTaggedSyntaxGraph::contextful(
-        "",
+      StringTaggedSyntaxGraph::from_descriptions(
+        "root",
         vec![
-          ("", "(", ")", vec!["", "COLON"]),
-          ("ANGLE", "<", ">", vec!["", "ANGLE", "COLON"])
+          ("root", vec!["", "COLON"]),
+          ("include_angle", vec!["", "ANGLE", "COLON"])
         ],
-        vec![("COLON", ":", 1, 1, vec!["", "ANGLE", "COLON"])],
+        vec![("", "(", ")", "root"), ("ANGLE", "<", ">", "include_angle")],
+        vec![("COLON", ":", 1, 1, "include_angle")],
       )
       .parse_to_sexp("((> 1 0) : <Bool>)"),
       Ok(List(vec![List(vec![
@@ -333,4 +302,4 @@ mod tests {
       ]))
     );
   }
-}*/
+}

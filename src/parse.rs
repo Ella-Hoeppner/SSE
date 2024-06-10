@@ -189,13 +189,17 @@ impl<
             }
           }
         }
-        for tag in self.syntax_graph.get_child_tags(
-          self
-            .partial_sexps
-            .last()
-            .map(|(tag, _)| tag)
-            .unwrap_or(&self.syntax_graph.root),
-        ) {
+        for tag in self
+          .syntax_graph
+          .get_context(
+            self
+              .partial_sexps
+              .last()
+              .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
+              .unwrap_or(&self.syntax_graph.root),
+          )
+          .tags()
+        {
           let beginning_marker = self.syntax_graph.get_beginning_marker(tag);
           if self.text[character_index..].starts_with(beginning_marker) {
             finish_terminal!();

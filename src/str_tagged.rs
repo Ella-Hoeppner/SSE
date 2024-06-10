@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use crate::syntax::{
-  Encloser, Operator, SymmetricEncloser, Syntax, SyntaxContext, SyntaxGraph,
-  SyntaxTag,
+  Encloser, Operator, SymmetricEncloser, SyntaxContext, SyntaxGraph, SyntaxTag,
 };
 
 impl<'s> SyntaxTag<'s> for &'s str {
@@ -13,22 +12,12 @@ impl<'s> SyntaxTag<'s> for &'s str {
 
 #[derive(Debug, Clone)]
 pub struct StringTaggedEncloser<'s> {
-  tag: &'s str,
   opener: &'s str,
   closer: &'s str,
 }
 impl<'s> StringTaggedEncloser<'s> {
-  pub fn new(tag: &'s str, opener: &'s str, closer: &'s str) -> Self {
-    Self {
-      tag,
-      opener,
-      closer,
-    }
-  }
-}
-impl<'s> Syntax<'s, &'s str> for StringTaggedEncloser<'s> {
-  fn tag(&self) -> &'s str {
-    self.tag
+  pub fn new(opener: &'s str, closer: &'s str) -> Self {
+    Self { opener, closer }
   }
 }
 impl<'s> Encloser<'s, &'s str> for StringTaggedEncloser<'s> {
@@ -43,17 +32,11 @@ impl<'s> Encloser<'s, &'s str> for StringTaggedEncloser<'s> {
 
 #[derive(Debug, Clone)]
 pub struct StringTaggedSymmetricEncloser<'s> {
-  tag: &'s str,
   encloser: &'s str,
 }
 impl<'s> StringTaggedSymmetricEncloser<'s> {
-  pub fn new(tag: &'s str, encloser: &'s str) -> Self {
-    Self { tag, encloser }
-  }
-}
-impl<'s> Syntax<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
-  fn tag(&self) -> &'s str {
-    self.tag
+  pub fn new(encloser: &'s str) -> Self {
+    Self { encloser }
   }
 }
 impl<'s> SymmetricEncloser<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
@@ -64,29 +47,17 @@ impl<'s> SymmetricEncloser<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
 
 #[derive(Debug, Clone)]
 pub struct StringTaggedOperator<'s> {
-  tag: &'s str,
   operator: &'s str,
   left_args: usize,
   right_args: usize,
 }
 impl<'s> StringTaggedOperator<'s> {
-  pub fn new(
-    tag: &'s str,
-    operator: &'s str,
-    left_args: usize,
-    right_args: usize,
-  ) -> Self {
+  pub fn new(operator: &'s str, left_args: usize, right_args: usize) -> Self {
     Self {
-      tag,
       operator,
       left_args,
       right_args,
     }
-  }
-}
-impl<'s> Syntax<'s, &'s str> for StringTaggedOperator<'s> {
-  fn tag(&self) -> &'s str {
-    self.tag
   }
 }
 impl<'s> Operator<'s, &'s str> for StringTaggedOperator<'s> {
@@ -125,13 +96,13 @@ impl<'s> StringTaggedSyntaxGraph<'s> {
       if opener == closer {
         symmetric_enclosers.push((
           tag,
-          StringTaggedSymmetricEncloser::new(tag, opener),
+          StringTaggedSymmetricEncloser::new(opener),
           context_tag,
         ));
       } else {
         enclosers.push((
           tag,
-          StringTaggedEncloser::new(tag, opener, closer),
+          StringTaggedEncloser::new(opener, closer),
           context_tag,
         ));
       }
@@ -151,7 +122,7 @@ impl<'s> StringTaggedSyntaxGraph<'s> {
         .map(|(tag, operator, left_args, right_args, context_tag)| {
           (
             tag,
-            StringTaggedOperator::new(tag, operator, left_args, right_args),
+            StringTaggedOperator::new(operator, left_args, right_args),
             context_tag,
           )
         })
