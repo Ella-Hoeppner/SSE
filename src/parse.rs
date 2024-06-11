@@ -7,7 +7,8 @@ use crate::{
   sexp::{TaggedSexp, TaggedSexpList},
   str_utils::is_whitespace,
   syntax::{
-    Encloser, Operator, SymmetricEncloser, SyntaxGraph, SyntaxScope, SyntaxTag,
+    Encloser, Operator, SymmetricEncloser, SyntaxElement, SyntaxGraph,
+    SyntaxTag,
   },
 };
 
@@ -97,9 +98,9 @@ impl<
   }
   fn is_scope_operator(&self) -> Option<bool> {
     self.partial_sexps.last().map(|(tag, _)| {
-      match self.syntax_graph.get_tag_scope(tag) {
-        SyntaxScope::Enclosed { .. } => false,
-        SyntaxScope::Operated { .. } => true,
+      match self.syntax_graph.get_tag_element(tag) {
+        SyntaxElement::Operator(_) => true,
+        _ => false,
       }
     })
   }
@@ -109,18 +110,17 @@ impl<
   ) -> Option<TaggedSexp<'s, Tag>> {
     if let Some((tag, subsexps)) = self.partial_sexps.last_mut() {
       subsexps.push(sexp);
-      if let SyntaxScope::Operated {
-        left_args,
-        right_args,
-      } = self.syntax_graph.get_tag_scope(tag)
-      {
-        if subsexps.len() == left_args + right_args {
-          self.close_sexp()
-        } else {
-          None
+      match self.syntax_graph.get_tag_element(tag) {
+        SyntaxElement::Operator(operator) => {
+          let left_args = operator.left_args();
+          let right_args = operator.right_args();
+          if subsexps.len() == left_args + right_args {
+            self.close_sexp()
+          } else {
+            None
+          }
         }
-      } else {
-        None
+        _ => None,
       }
     } else {
       Some(sexp)
@@ -132,12 +132,14 @@ impl<
       .iter()
       .rev()
       .filter_map(|open_sexp| {
-        if let SyntaxScope::Enclosed { awaited_closer } =
-          self.syntax_graph.get_tag_scope(&open_sexp.0)
-        {
-          return Some(awaited_closer);
-        } else {
-          None
+        match self.syntax_graph.get_tag_element(&open_sexp.0) {
+          SyntaxElement::Encloser(encloser) => {
+            Some(encloser.closing_encloser_str())
+          }
+          SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
+            Some(symmetric_encloser.encloser_str())
+          }
+          _ => None,
         }
       })
       .next()
@@ -174,8 +176,9 @@ impl<
       if is_whitespace(character) {
         finish_terminal!();
       } else {
+        let remaining_text = &self.text[character_index..];
         if let Some(awaited_closer) = self.awaited_closer() {
-          if self.text[character_index..].starts_with(awaited_closer) {
+          if remaining_text.starts_with(awaited_closer) {
             finish_terminal!();
             let closer_len = awaited_closer.len();
             if self.is_scope_operator() == Some(true) {
@@ -189,19 +192,25 @@ impl<
             }
           }
         }
-        for tag in self
-          .syntax_graph
-          .get_context(
-            self
-              .partial_sexps
-              .last()
-              .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
-              .unwrap_or(&self.syntax_graph.root),
-          )
-          .tags()
+        let active_context_tag = self
+          .partial_sexps
+          .last()
+          .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
+          .unwrap_or(&self.syntax_graph.root);
+        for closer in
+          self.syntax_graph.get_asymmetric_closers(active_context_tag)
         {
+          if remaining_text.starts_with(closer) {
+            println!(
+              "{}\n{}\nstarts with: {}",
+              self.text, remaining_text, closer
+            );
+            return Err(ParseError::UnexpectedCloser(closer.to_string()));
+          }
+        }
+        for tag in self.syntax_graph.get_context(active_context_tag).tags() {
           let beginning_marker = self.syntax_graph.get_beginning_marker(tag);
-          if self.text[character_index..].starts_with(beginning_marker) {
+          if remaining_text.starts_with(beginning_marker) {
             finish_terminal!();
             let leftward_args = self
               .consume_left_sexps(self.syntax_graph.get_left_arg_count(tag))?;

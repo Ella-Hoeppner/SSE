@@ -58,11 +58,6 @@ impl<'s, Tag: SyntaxTag<'s>> SyntaxContext<'s, Tag> {
   }
 }
 
-pub(crate) enum SyntaxScope<'s> {
-  Enclosed { awaited_closer: &'s str },
-  Operated { left_args: usize, right_args: usize },
-}
-
 pub struct SyntaxGraph<
   's,
   Tag: SyntaxTag<'s>,
@@ -141,44 +136,27 @@ impl<
       SyntaxElement::_Unusable(_, _) => unreachable!(),
     }
   }
-  pub(crate) fn get_tag_scope(&self, tag: &Tag) -> SyntaxScope {
-    match &self.syntax_elements[tag].0 {
-      SyntaxElement::Encloser(encloser) => SyntaxScope::Enclosed {
-        awaited_closer: encloser.closing_encloser_str(),
-      },
-      SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
-        SyntaxScope::Enclosed {
-          awaited_closer: symmetric_encloser.encloser_str(),
-        }
-      }
-      SyntaxElement::Operator(operator) => SyntaxScope::Operated {
-        left_args: operator.left_args(),
-        right_args: operator.right_args(),
-      },
-      SyntaxElement::_Unusable(_, _) => unreachable!(),
-    }
+  pub(crate) fn get_tag_element(
+    &self,
+    tag: &Tag,
+  ) -> &SyntaxElement<'s, Tag, E, SE, O> {
+    &self.syntax_elements[tag].0
   }
-  /*pub(crate) fn get_active_closers(&'s self, tag: &Tag) -> Vec<&'s str> {
-    match &self.syntax_elements[tag] {
-      SyntaxElement::Encloser(encloser) => encloser.child_tags(),
-      SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
-        symmetric_encloser.child_tags()
-      }
-      SyntaxElement::Operator(operator) => operator.child_tags(),
-      SyntaxElement::_Unusable(_, _) => unreachable!(),
-    }
-    .iter()
-    .filter_map(|child_tag| {
-      if let SyntaxScope::Enclosed { awaited_closer } =
-        self.get_tag_scope(child_tag)
-      {
-        Some(awaited_closer)
-      } else {
-        None
-      }
-    })
-    .collect()
-  }*/
+  pub(crate) fn get_asymmetric_closers(
+    &'s self,
+    context_tag: &ContextTag,
+  ) -> Vec<&'s str> {
+    self.contexts[context_tag]
+      .tags()
+      .iter()
+      .filter_map(|child_tag| match self.get_tag_element(child_tag) {
+        SyntaxElement::Encloser(encloser) => {
+          Some(encloser.closing_encloser_str())
+        }
+        _ => None,
+      })
+      .collect()
+  }
   pub fn parse(
     &'s self,
     text: &'s str,

@@ -130,7 +130,7 @@ mod tests {
   fn mismatched_brackets_cause_error() {
     assert_eq!(
       multi_bracket_graph().parse_to_sexp("([)]"),
-      Err(ParseError::UnexpectedCloser("]".to_string()))
+      Err(ParseError::UnexpectedCloser(")".to_string()))
     );
   }
 
@@ -244,8 +244,9 @@ mod tests {
         ],
         vec![]
       )
-      .parse_to_sexp("(< [<>])"),
+      .parse_to_sexp("(> < [<>])"),
       Ok(List(vec![
+        Leaf(">"),
         Leaf("<"),
         List(vec![Leaf("SQUARE"), List(vec![Leaf("ANGLE")])]),
       ]))

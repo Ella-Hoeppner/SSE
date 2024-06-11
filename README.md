@@ -4,18 +4,17 @@ A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
 * once a sexp is recognized, keep parsing until it is guaranteed that first sexp won't be consumed by an operator
-* recognize mismatched closer markers of each encloser in scope, return error
-  * including any in-scope closing encloser during infix ops
 * support rebinding whitespace, escape sequences per tag
   * add tests
 * support turning a `Sexp` back into a `TaggedSexp` for a given `SyntaxGraph`
 * pretty printing
-* create a context-free clojure-like language as an example, including strings, single-line comments, and block-comments
+* create a clojure-like language as an example, including strings, single-line comments, and block-comments
 
 ##### eventual todos, not urgent
 * validate the coherence of syntax graph
   * things to validate:
     * no `ContextTag`s or `Tag`s should be duplicated
+    * all `SyntaxTag`s have unique `tag_str`s
     * root `Tag` must exist in the syntax graph
     * all `Tag`s must exist in at least one context, or be the root
     * all `ContextTag`s should be reachable from root
