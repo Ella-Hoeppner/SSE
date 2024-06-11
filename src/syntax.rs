@@ -3,11 +3,6 @@ use std::{
   marker::PhantomData,
 };
 
-use crate::{
-  parse::{Parse, ParseError},
-  sexp::{Sexp, TaggedSexp},
-};
-
 pub trait SyntaxTag<'s>: Clone + Debug + PartialEq + Eq + Hash {
   fn tag_str(&self) -> &'s str;
 }
@@ -28,7 +23,7 @@ pub trait Operator<'s, Tag: SyntaxTag<'s>> {
 }
 
 #[derive(Hash)]
-pub enum SyntaxElement<
+pub(crate) enum SyntaxElement<
   's,
   Tag: SyntaxTag<'s>,
   E: Encloser<'s, Tag>,
@@ -156,17 +151,5 @@ impl<
         _ => None,
       })
       .collect()
-  }
-  pub fn parse(
-    &'s self,
-    text: &'s str,
-  ) -> Result<TaggedSexp<'s, Tag>, ParseError> {
-    Parse::new(&self, text).complete()
-  }
-  pub fn parse_to_sexp(
-    &'s self,
-    text: &'s str,
-  ) -> Result<Sexp<'s>, ParseError> {
-    self.parse(text).map(|tagged_sexp| tagged_sexp.into())
   }
 }

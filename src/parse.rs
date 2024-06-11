@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-  sexp::{TaggedSexp, TaggedSexpList},
+  sexp::{Sexp, TaggedSexp, TaggedSexpList},
   str_utils::is_whitespace,
   syntax::{
     Encloser, Operator, SymmetricEncloser, SyntaxElement, SyntaxGraph,
@@ -38,7 +38,7 @@ impl Display for ParseError {
   }
 }
 
-pub(crate) struct Parse<
+struct Parse<
   's,
   Tag: SyntaxTag<'s>,
   ContextTag: Clone + Debug + PartialEq + Eq + Hash,
@@ -96,7 +96,7 @@ impl<
     let finished_sexp = TaggedSexp::List((tag, sub_sexps));
     self.push_closed_sexp(finished_sexp)
   }
-  fn is_scope_operator(&self) -> Option<bool> {
+  fn is_top_open_operator(&self) -> Option<bool> {
     self.partial_sexps.last().map(|(tag, _)| {
       match self.syntax_graph.get_tag_element(tag) {
         SyntaxElement::Operator(_) => true,
@@ -144,7 +144,7 @@ impl<
       })
       .next()
   }
-  pub(crate) fn complete(&mut self) -> Result<TaggedSexp<'s, Tag>, ParseError> {
+  fn complete(&mut self) -> Result<TaggedSexp<'s, Tag>, ParseError> {
     let mut current_terminal_beginning: Option<usize> = None;
     let mut indexed_characters = self
       .text
@@ -181,7 +181,7 @@ impl<
           if remaining_text.starts_with(awaited_closer) {
             finish_terminal!();
             let closer_len = awaited_closer.len();
-            if self.is_scope_operator() == Some(true) {
+            if self.is_top_open_operator() == Some(true) {
               return Err(ParseError::MissingRightArgument);
             }
             if let Some(completed_sexp) = self.close_sexp() {
@@ -225,5 +225,72 @@ impl<
       }
     }
     Err(ParseError::EndOfText)
+  }
+}
+pub struct Parser<
+  's,
+  Tag: SyntaxTag<'s>,
+  ContextTag: Clone + Debug + PartialEq + Eq + Hash,
+  E: Encloser<'s, Tag>,
+  SE: SymmetricEncloser<'s, Tag>,
+  O: Operator<'s, Tag>,
+> {
+  text: &'s str,
+  syntax_graph: SyntaxGraph<'s, Tag, ContextTag, E, SE, O>,
+  parsed_top_level_sexps: Vec<TaggedSexpList<'s, Tag>>,
+  top_level_lookahead: usize,
+  parse_index: usize,
+  lookahead_index: usize,
+}
+
+impl<
+    's,
+    Tag: SyntaxTag<'s>,
+    ContextTag: Clone + Debug + PartialEq + Eq + Hash,
+    E: Encloser<'s, Tag>,
+    SE: SymmetricEncloser<'s, Tag>,
+    O: Operator<'s, Tag>,
+  > Parser<'s, Tag, ContextTag, E, SE, O>
+{
+  pub fn new(
+    syntax_graph: SyntaxGraph<'s, Tag, ContextTag, E, SE, O>,
+    text: &'s str,
+  ) -> Self {
+    Self {
+      text,
+      top_level_lookahead: syntax_graph
+        .get_context(&syntax_graph.root)
+        .tags()
+        .iter()
+        .map(|tag| match syntax_graph.get_tag_element(tag) {
+          SyntaxElement::Operator(operator) => operator.left_args(),
+          _ => 0,
+        })
+        .max()
+        .unwrap_or(0),
+      syntax_graph,
+      parsed_top_level_sexps: vec![],
+      parse_index: 0,
+      lookahead_index: 0,
+    }
+  }
+  pub fn replace_syntax_graph(
+    &mut self,
+    new_syntax_graph: SyntaxGraph<'s, Tag, ContextTag, E, SE, O>,
+  ) {
+    self.syntax_graph = new_syntax_graph;
+    self.lookahead_index = self.parse_index;
+    self.parsed_top_level_sexps.clear();
+  }
+  pub fn read_next_tagged_sexp(
+    &'s mut self,
+  ) -> Result<TaggedSexp<'s, Tag>, ParseError> {
+    // todo! make use of the rest of the fields to parse multiple sexps while avoiding duplicating work
+    Parse::new(&self.syntax_graph, self.text).complete()
+  }
+  pub fn read_next_sexp(&'s mut self) -> Result<Sexp, ParseError> {
+    self
+      .read_next_tagged_sexp()
+      .map(|tagged_sexp| tagged_sexp.into())
   }
 }
