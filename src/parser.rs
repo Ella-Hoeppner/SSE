@@ -97,4 +97,27 @@ impl<
       maybe_tagged_sexp.map(|tagged_sexp| tagged_sexp.into())
     })
   }
+  pub fn read_all_tagged_sexps(
+    &mut self,
+  ) -> Vec<Result<TaggedSexp<Tag>, ParseError>> {
+    let mut results = vec![];
+    loop {
+      match self.read_next_tagged_sexp() {
+        Ok(None) => break,
+        Ok(Some(tagged_sexp)) => results.push(Ok(tagged_sexp)),
+        Err(err) => {
+          results.push(Err(err));
+          break;
+        }
+      }
+    }
+    results
+  }
+  pub fn read_all_sexps(&mut self) -> Vec<Result<Sexp, ParseError>> {
+    self
+      .read_all_tagged_sexps()
+      .into_iter()
+      .map(|result| result.map(|tagged_sexp| tagged_sexp.into()))
+      .collect()
+  }
 }

@@ -401,4 +401,56 @@ mod tests {
       ])))
     );
   }
+
+  #[test]
+  fn read_all_single_sexp() {
+    let mut parser = Parser::new(sexp_graph(), "(+ 1 2)");
+    println!("{:?}", parser);
+    assert_eq!(
+      parser.read_all_sexps(),
+      vec![Ok(List(vec![
+        Leaf("+".to_string()),
+        Leaf("1".to_string()),
+        Leaf("2".to_string())
+      ]))]
+    );
+  }
+
+  #[test]
+  fn read_all_double_sexp() {
+    let mut parser = Parser::new(sexp_graph(), "(+ 1 2) (* 3 4)");
+    println!("{:?}", parser);
+    assert_eq!(
+      parser.read_all_sexps(),
+      vec![
+        Ok(List(vec![
+          Leaf("+".to_string()),
+          Leaf("1".to_string()),
+          Leaf("2".to_string())
+        ])),
+        Ok(List(vec![
+          Leaf("*".to_string()),
+          Leaf("3".to_string()),
+          Leaf("4".to_string())
+        ]))
+      ]
+    );
+  }
+
+  #[test]
+  fn read_all_double_sexp_err() {
+    let mut parser = Parser::new(sexp_graph(), "(+ 1 2) (* 3 4");
+    println!("{:?}", parser);
+    assert_eq!(
+      parser.read_all_sexps(),
+      vec![
+        Ok(List(vec![
+          Leaf("+".to_string()),
+          Leaf("1".to_string()),
+          Leaf("2".to_string())
+        ])),
+        Err(ParseError::EndOfTextWithOpenEncloser("(".to_string()))
+      ]
+    );
+  }
 }

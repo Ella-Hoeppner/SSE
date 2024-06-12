@@ -3,13 +3,14 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
-* give `Parser` a method for parsing everything in a string, not just the next sexp
 * support rebinding whitespace, escape character per context
   * add tests
+* create a clojure-like language as an example, including strings, single-line comments, and block-comments
 * support turning a `Sexp` back into a `TaggedSexp` for a given `SyntaxGraph`
 * pretty printing
-* create a clojure-like language as an example, including strings, single-line comments, and block-comments
 * Track all whitespace while parsing, such that the the original text can be losslessly recreated after parsing
+  * I think this can just be in `TaggedSexp`, doesn't need to be in `Sexp`? Though sometimes it might be nice to have in `Sexp`?
+    * Could just refactor things to have a single `Sexp` type that has generic parameters for metadata associated with each leaf, and each internal node. The current `Sexp` would just like having unit for the internal generic
   * this will be helpful in the LSP for highlighting errors and stuff
 
 ##### eventual todos, not urgent
