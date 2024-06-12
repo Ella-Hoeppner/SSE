@@ -45,31 +45,31 @@ impl Display for ParseError {
 pub(crate) struct Parse<
   't,
   'g,
-  Tag: SyntaxTag<'g>,
+  Tag: SyntaxTag,
   ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-  E: Encloser<'g, Tag>,
-  SE: SymmetricEncloser<'g, Tag>,
-  O: Operator<'g, Tag>,
+  E: Encloser<Tag>,
+  SE: SymmetricEncloser<Tag>,
+  O: Operator<Tag>,
 > {
   text: &'t str,
-  inherited_top_level_sexps: Vec<(TaggedSexp<'t, 'g, Tag>, usize)>,
-  syntax_graph: &'g SyntaxGraph<'g, Tag, ContextTag, E, SE, O>,
-  open_sexps: Vec<TaggedSexpList<'t, 'g, Tag>>,
+  inherited_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
+  syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, SE, O>,
+  open_sexps: Vec<TaggedSexpList<Tag>>,
 }
 
 impl<
     't,
     'g,
-    Tag: SyntaxTag<'g>,
+    Tag: SyntaxTag,
     ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-    E: Encloser<'g, Tag>,
-    SE: SymmetricEncloser<'g, Tag>,
-    O: Operator<'g, Tag>,
+    E: Encloser<Tag>,
+    SE: SymmetricEncloser<Tag>,
+    O: Operator<Tag>,
   > Parse<'t, 'g, Tag, ContextTag, E, SE, O>
 {
   pub(crate) fn new(
-    syntax_graph: &'g SyntaxGraph<'g, Tag, ContextTag, E, SE, O>,
-    inherited_top_level_sexps: Vec<(TaggedSexp<'t, 'g, Tag>, usize)>,
+    syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, SE, O>,
+    inherited_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
     text: &'t str,
   ) -> Self {
     Self {
@@ -82,7 +82,7 @@ impl<
   fn consume_left_sexps(
     &mut self,
     tag: &Tag,
-  ) -> Result<Vec<TaggedSexp<'t, 'g, Tag>>, ParseError> {
+  ) -> Result<Vec<TaggedSexp<Tag>>, ParseError> {
     match self.syntax_graph.get_tag_element(tag) {
       SyntaxElement::Operator(operator) => {
         let n = operator.left_args();
@@ -118,18 +118,18 @@ impl<
       _ => Ok(vec![]),
     }
   }
-  fn close_sexp(&mut self) -> Option<TaggedSexp<'t, 'g, Tag>> {
+  fn close_sexp(&mut self) -> Option<TaggedSexp<Tag>> {
     let (tag, sub_sexps) = self
       .open_sexps
       .pop()
       .expect("called close_sexp with no open partial sexp");
-    let finished_sexp = TaggedSexp::List((tag, sub_sexps), &PhantomData);
+    let finished_sexp = TaggedSexp::List((tag, sub_sexps));
     self.push_closed_sexp(finished_sexp)
   }
   fn push_closed_sexp(
     &mut self,
-    sexp: TaggedSexp<'t, 'g, Tag>,
-  ) -> Option<TaggedSexp<'t, 'g, Tag>> {
+    sexp: TaggedSexp<Tag>,
+  ) -> Option<TaggedSexp<Tag>> {
     if let Some((tag, subsexps)) = self.open_sexps.last_mut() {
       subsexps.push(sexp);
       match self.syntax_graph.get_tag_element(tag) {
@@ -168,11 +168,9 @@ impl<
   }
   pub(crate) fn complete(
     mut self,
+    already_parsed_index: usize,
   ) -> Result<
-    Result<
-      Vec<(TaggedSexp<'t, 'g, Tag>, usize)>,
-      Vec<(TaggedSexp<'t, 'g, Tag>, usize)>,
-    >,
+    Result<Vec<(TaggedSexp<Tag>, usize)>, Vec<(TaggedSexp<Tag>, usize)>>,
     ParseError,
   > {
     let mut current_terminal_beginning: Option<usize> = None;
@@ -180,7 +178,7 @@ impl<
       .inherited_top_level_sexps
       .last()
       .map(|(_, end_index)| *end_index)
-      .unwrap_or(0);
+      .unwrap_or(already_parsed_index);
     if beginning_index >= self.text.len() {
       return Ok(Err(self.inherited_top_level_sexps));
     }
@@ -192,12 +190,15 @@ impl<
       indexed_characters.next()
     {
       let character_index = beginning_index + character_index_offset;
+      println!("{character_index}: {character}");
       macro_rules! finish_terminal {
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
-            if let Some(completed_sexp) = self.push_closed_sexp(
-              TaggedSexp::Leaf(&self.text[terminal_beginning..character_index]),
-            ) {
+            if let Some(completed_sexp) =
+              self.push_closed_sexp(TaggedSexp::Leaf(
+                self.text[terminal_beginning..character_index].to_string(),
+              ))
+            {
               let mut top_level_sexps = self.inherited_top_level_sexps;
               top_level_sexps.push((completed_sexp, character_index));
               return Ok(Ok(top_level_sexps));
@@ -286,7 +287,7 @@ impl<
             operator.op_str().to_string(),
           ))
         }
-        SyntaxElement::_Unusable(_, _) => unreachable!(),
+        SyntaxElement::_Unusable(_) => unreachable!(),
       },
     }
   }

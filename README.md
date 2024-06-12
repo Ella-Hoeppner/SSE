@@ -20,7 +20,7 @@ A parser for **S**ugared **S**-**E**xpressions.
     * root `Tag` must exist in the syntax graph
     * all `Tag`s must exist in at least one context, or be the root
     * all `ContextTag`s should be reachable from root
-    * no markers are ambiguous, i.e. nothing is a prefix of another
+    * no markers within a context are ambiguous, i.e. nothing is a prefix of another
 * LSP
 * support for custom pretty-printing/formatting logic, conditional on tag + first element after tag
   * or maybe just accept a `fn(TaggedSexp) -> Option<Formatting Info>` that can scan each form and optionally give override control of the normal formatting, for more generality?

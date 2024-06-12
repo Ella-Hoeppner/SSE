@@ -4,8 +4,8 @@ use crate::syntax::{
   Encloser, Operator, SymmetricEncloser, SyntaxContext, SyntaxGraph, SyntaxTag,
 };
 
-impl<'g> SyntaxTag<'g> for &'g str {
-  fn tag_str(&self) -> &'g str {
+impl SyntaxTag for &str {
+  fn tag_str(&self) -> &str {
     self
   }
 }
@@ -20,7 +20,7 @@ impl<'g> StringTaggedEncloser<'g> {
     Self { opener, closer }
   }
 }
-impl<'g> Encloser<'g, &'g str> for StringTaggedEncloser<'g> {
+impl<'g> Encloser<&'g str> for StringTaggedEncloser<'g> {
   fn opening_encloser_str(&self) -> &'g str {
     self.opener
   }
@@ -39,7 +39,7 @@ impl<'g> StringTaggedSymmetricEncloser<'g> {
     Self { encloser }
   }
 }
-impl<'g> SymmetricEncloser<'g, &'g str> for StringTaggedSymmetricEncloser<'g> {
+impl<'g> SymmetricEncloser<&'g str> for StringTaggedSymmetricEncloser<'g> {
   fn encloser_str(&self) -> &'g str {
     self.encloser
   }
@@ -60,7 +60,7 @@ impl<'g> StringTaggedOperator<'g> {
     }
   }
 }
-impl<'g> Operator<'g, &'g str> for StringTaggedOperator<'g> {
+impl<'g> Operator<&'g str> for StringTaggedOperator<'g> {
   fn op_str(&self) -> &'g str {
     self.operator
   }
@@ -75,7 +75,6 @@ impl<'g> Operator<'g, &'g str> for StringTaggedOperator<'g> {
 }
 
 pub type StringTaggedSyntaxGraph<'g> = SyntaxGraph<
-  'g,
   &'g str,
   &'g str,
   StringTaggedEncloser<'g>,

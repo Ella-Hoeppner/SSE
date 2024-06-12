@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "quoot"
+name = "SSE"
 version = "0.0.0"
