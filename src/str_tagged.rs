@@ -85,7 +85,7 @@ pub type StringTaggedSyntaxGraph<'g> = SyntaxGraph<
 impl<'g> StringTaggedSyntaxGraph<'g> {
   pub fn from_descriptions(
     root: &'g str,
-    context_descriptions: Vec<(&'g str, Vec<&'g str>, Vec<char>)>,
+    context_descriptions: Vec<(&'g str, Vec<&'g str>, Option<char>, Vec<char>)>,
     encloser_descriptions: Vec<(&'g str, &'g str, &'g str, &'g str)>,
     operator_descriptions: Vec<(&'g str, &'g str, usize, usize, &'g str)>,
   ) -> Self {
@@ -110,12 +110,14 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
       root,
       context_descriptions
         .into_iter()
-        .map(|(context_name, internal_tags, whitespace_chars)| {
-          (
-            context_name,
-            SyntaxContext::new(internal_tags, whitespace_chars),
-          )
-        })
+        .map(
+          |(context_name, internal_tags, escape_char, whitespace_chars)| {
+            (
+              context_name,
+              SyntaxContext::new(internal_tags, escape_char, whitespace_chars),
+            )
+          },
+        )
         .collect::<HashMap<_, _>>(),
       enclosers,
       symmetric_enclosers,
@@ -133,6 +135,7 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
   }
   pub fn contextless_from_descriptions(
     whitespace_chars: Vec<char>,
+    escape_char: Option<char>,
     encloser_descriptions: Vec<(&'g str, &'g str, &'g str)>,
     operator_descriptions: Vec<(&'g str, &'g str, usize, usize)>,
   ) -> Self {
@@ -146,6 +149,7 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
           .chain(operator_descriptions.iter().map(|(tag, _, _, _)| tag))
           .cloned()
           .collect(),
+        escape_char,
         whitespace_chars,
       )],
       encloser_descriptions

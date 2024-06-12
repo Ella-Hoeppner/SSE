@@ -35,12 +35,18 @@ pub(crate) enum SyntaxElement<
 #[derive(Clone, Debug)]
 pub struct SyntaxContext<Tag: SyntaxTag> {
   whitespace_chars: Vec<char>,
+  pub(crate) escape_char: Option<char>,
   tags: Vec<Tag>,
 }
 impl<'g, Tag: SyntaxTag> SyntaxContext<Tag> {
-  pub fn new(tags: Vec<Tag>, whitespace_chars: Vec<char>) -> Self {
+  pub fn new(
+    tags: Vec<Tag>,
+    escape_char: Option<char>,
+    whitespace_chars: Vec<char>,
+  ) -> Self {
     Self {
       whitespace_chars,
+      escape_char,
       tags,
     }
   }

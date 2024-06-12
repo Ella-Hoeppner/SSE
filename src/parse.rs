@@ -184,10 +184,12 @@ impl<
       .char_indices()
       .chain(std::iter::once((self.text.len() - beginning_index, ' ')))
       .peekable();
+    let mut escaped = false;
     'outer: while let Some((character_index_offset, character)) =
       indexed_characters.next()
     {
       let character_index = beginning_index + character_index_offset;
+      println!("\n{character_index}: {character} ({escaped})");
       macro_rules! finish_terminal {
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
@@ -218,7 +220,13 @@ impl<
           .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root),
       );
-      if active_context.is_whitespace(character) {
+      if escaped {
+        escaped = false;
+      } else if active_context.escape_char == Some(character) {
+        escaped = true;
+        current_terminal_beginning =
+          current_terminal_beginning.or(Some(character_index));
+      } else if active_context.is_whitespace(character) {
         finish_terminal!();
       } else {
         let remaining_text = &self.text[character_index..];

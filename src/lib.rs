@@ -23,6 +23,7 @@ mod tests {
   fn sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![' ', '\n', '\t', '\r'],
+      Some('\\'),
       vec![("", "(", ")")],
       vec![],
     )
@@ -31,6 +32,7 @@ mod tests {
   fn plus_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![' ', '\n', '\t', '\r'],
+      Some('\\'),
       vec![("", "(", ")")],
       vec![("PLUS", "+", 1, 1)],
     )
@@ -39,6 +41,7 @@ mod tests {
   fn pipe_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![' ', '\n', '\t', '\r'],
+      None,
       vec![("", "(", ")"), ("PIPE", "|", "|")],
       vec![],
     )
@@ -47,14 +50,33 @@ mod tests {
   fn quote_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![' ', '\n', '\t', '\r'],
+      None,
       vec![("", "(", ")")],
       vec![("QUOTE", "'", 0, 1)],
+    )
+  }
+
+  fn string_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
+    StringTaggedSyntaxGraph::from_descriptions(
+      "root",
+      vec![
+        (
+          "root",
+          vec!["", "STRING"],
+          None,
+          vec![' ', '\n', '\t', '\r'],
+        ),
+        ("string", vec![], Some('\\'), vec![]),
+      ],
+      vec![("", "(", ")", "root"), ("STRING", "\"", "\"", "string")],
+      vec![],
     )
   }
 
   fn multi_bracket_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
       vec![' ', '\n', '\t', '\r'],
+      None,
       vec![
         ("", "(", ")"),
         (":SQUARE", "[", "]"),
@@ -288,10 +310,16 @@ mod tests {
         StringTaggedSyntaxGraph::from_descriptions(
           "root",
           vec![
-            ("root", vec!["", "SQUARE"], vec![' ', '\n', '\t', '\r'],),
+            (
+              "root",
+              vec!["", "SQUARE"],
+              None,
+              vec![' ', '\n', '\t', '\r'],
+            ),
             (
               "include_angle",
               vec!["", "SQUARE", "ANGLE"],
+              None,
               vec![' ', '\n', '\t', '\r'],
             )
           ],
@@ -323,10 +351,11 @@ mod tests {
         StringTaggedSyntaxGraph::from_descriptions(
           "root",
           vec![
-            ("root", vec!["", "COLON"], vec![' ', '\n', '\t', '\r'],),
+            ("root", vec!["", "COLON"], None, vec![' ', '\n', '\t', '\r'],),
             (
               "include_angle",
               vec!["", "ANGLE", "COLON"],
+              None,
               vec![' ', '\n', '\t', '\r'],
             )
           ],
@@ -358,6 +387,30 @@ mod tests {
         Leaf("1".to_string()),
         Leaf("2".to_string())
       ])))
+    );
+  }
+
+  #[test]
+  fn escaped_closer() {
+    assert_eq!(
+      Parser::new(sexp_graph(), "(\\))").read_next_sexp(),
+      Ok(Some(List(vec![Leaf("\\)".to_string())])))
+    );
+  }
+
+  #[test]
+  fn escaped_opener() {
+    assert_eq!(
+      Parser::new(sexp_graph(), "(\\()").read_next_sexp(),
+      Ok(Some(List(vec![Leaf("\\(".to_string())])))
+    );
+  }
+
+  #[test]
+  fn escaped_operator() {
+    assert_eq!(
+      Parser::new(plus_sexp_graph(), "(\\+)").read_next_sexp(),
+      Ok(Some(List(vec![Leaf("\\+".to_string())])))
     );
   }
 
@@ -462,15 +515,7 @@ mod tests {
   fn contextful_whitespace() {
     assert_eq!(
       Parser::new(
-        StringTaggedSyntaxGraph::from_descriptions(
-          "root",
-          vec![
-            ("root", vec!["", "STRING"], vec![' ', '\n', '\t', '\r'],),
-            ("string", vec![], vec![])
-          ],
-          vec![("", "(", ")", "root"), ("STRING", "\"", "\"", "string")],
-          vec![],
-        ),
+        string_sexp_graph(),
         "(before string \" inside string!!! \" after string)"
       )
       .read_next_sexp(),
@@ -483,6 +528,17 @@ mod tests {
         ]),
         Leaf("after".to_string()),
         Leaf("string".to_string()),
+      ])))
+    );
+  }
+
+  #[test]
+  fn contextful_escape() {
+    assert_eq!(
+      Parser::new(string_sexp_graph(), "\"\\\"\"").read_next_sexp(),
+      Ok(Some(List(vec![
+        Leaf("STRING".to_string()),
+        Leaf("\\\"".to_string()),
       ])))
     );
   }
