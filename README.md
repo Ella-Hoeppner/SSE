@@ -3,7 +3,7 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
-* once a sexp is recognized, keep parsing until it is guaranteed that first sexp won't be consumed by an operator
+* give `Parser` a method for parsing everything in a string, not just the next sexp
 * support rebinding whitespace, escape character per context
   * add tests
 * support turning a `Sexp` back into a `TaggedSexp` for a given `SyntaxGraph`

@@ -4,55 +4,55 @@ use crate::syntax::{
   Encloser, Operator, SymmetricEncloser, SyntaxContext, SyntaxGraph, SyntaxTag,
 };
 
-impl<'s> SyntaxTag<'s> for &'s str {
-  fn tag_str(&self) -> &'s str {
+impl<'g> SyntaxTag<'g> for &'g str {
+  fn tag_str(&self) -> &'g str {
     self
   }
 }
 
 #[derive(Debug, Clone)]
-pub struct StringTaggedEncloser<'s> {
-  opener: &'s str,
-  closer: &'s str,
+pub struct StringTaggedEncloser<'g> {
+  opener: &'g str,
+  closer: &'g str,
 }
-impl<'s> StringTaggedEncloser<'s> {
-  pub fn new(opener: &'s str, closer: &'s str) -> Self {
+impl<'g> StringTaggedEncloser<'g> {
+  pub fn new(opener: &'g str, closer: &'g str) -> Self {
     Self { opener, closer }
   }
 }
-impl<'s> Encloser<'s, &'s str> for StringTaggedEncloser<'s> {
-  fn opening_encloser_str(&self) -> &str {
+impl<'g> Encloser<'g, &'g str> for StringTaggedEncloser<'g> {
+  fn opening_encloser_str(&self) -> &'g str {
     self.opener
   }
 
-  fn closing_encloser_str(&self) -> &str {
+  fn closing_encloser_str(&self) -> &'g str {
     self.closer
   }
 }
 
 #[derive(Debug, Clone)]
-pub struct StringTaggedSymmetricEncloser<'s> {
-  encloser: &'s str,
+pub struct StringTaggedSymmetricEncloser<'g> {
+  encloser: &'g str,
 }
-impl<'s> StringTaggedSymmetricEncloser<'s> {
-  pub fn new(encloser: &'s str) -> Self {
+impl<'g> StringTaggedSymmetricEncloser<'g> {
+  pub fn new(encloser: &'g str) -> Self {
     Self { encloser }
   }
 }
-impl<'s> SymmetricEncloser<'s, &'s str> for StringTaggedSymmetricEncloser<'s> {
-  fn encloser_str(&self) -> &str {
+impl<'g> SymmetricEncloser<'g, &'g str> for StringTaggedSymmetricEncloser<'g> {
+  fn encloser_str(&self) -> &'g str {
     self.encloser
   }
 }
 
 #[derive(Debug, Clone)]
-pub struct StringTaggedOperator<'s> {
-  operator: &'s str,
+pub struct StringTaggedOperator<'g> {
+  operator: &'g str,
   left_args: usize,
   right_args: usize,
 }
-impl<'s> StringTaggedOperator<'s> {
-  pub fn new(operator: &'s str, left_args: usize, right_args: usize) -> Self {
+impl<'g> StringTaggedOperator<'g> {
+  pub fn new(operator: &'g str, left_args: usize, right_args: usize) -> Self {
     Self {
       operator,
       left_args,
@@ -60,8 +60,8 @@ impl<'s> StringTaggedOperator<'s> {
     }
   }
 }
-impl<'s> Operator<'s, &'s str> for StringTaggedOperator<'s> {
-  fn op_str(&self) -> &str {
+impl<'g> Operator<'g, &'g str> for StringTaggedOperator<'g> {
+  fn op_str(&self) -> &'g str {
     self.operator
   }
 
@@ -74,21 +74,21 @@ impl<'s> Operator<'s, &'s str> for StringTaggedOperator<'s> {
   }
 }
 
-pub type StringTaggedSyntaxGraph<'s> = SyntaxGraph<
-  's,
-  &'s str,
-  &'s str,
-  StringTaggedEncloser<'s>,
-  StringTaggedSymmetricEncloser<'s>,
-  StringTaggedOperator<'s>,
+pub type StringTaggedSyntaxGraph<'g> = SyntaxGraph<
+  'g,
+  &'g str,
+  &'g str,
+  StringTaggedEncloser<'g>,
+  StringTaggedSymmetricEncloser<'g>,
+  StringTaggedOperator<'g>,
 >;
 
-impl<'s> StringTaggedSyntaxGraph<'s> {
+impl<'g> StringTaggedSyntaxGraph<'g> {
   pub fn from_descriptions(
-    root: &'s str,
-    context_descriptions: Vec<(&'s str, Vec<&'s str>)>,
-    encloser_descriptions: Vec<(&'s str, &'s str, &'s str, &'s str)>,
-    operator_descriptions: Vec<(&'s str, &'s str, usize, usize, &'s str)>,
+    root: &'g str,
+    context_descriptions: Vec<(&'g str, Vec<&'g str>)>,
+    encloser_descriptions: Vec<(&'g str, &'g str, &'g str, &'g str)>,
+    operator_descriptions: Vec<(&'g str, &'g str, usize, usize, &'g str)>,
   ) -> Self {
     let mut enclosers = vec![];
     let mut symmetric_enclosers = vec![];
@@ -130,8 +130,8 @@ impl<'s> StringTaggedSyntaxGraph<'s> {
     )
   }
   pub fn contextless_from_descriptions(
-    encloser_descriptions: Vec<(&'s str, &'s str, &'s str)>,
-    operator_descriptions: Vec<(&'s str, &'s str, usize, usize)>,
+    encloser_descriptions: Vec<(&'g str, &'g str, &'g str)>,
+    operator_descriptions: Vec<(&'g str, &'g str, usize, usize)>,
   ) -> Self {
     Self::from_descriptions(
       "",

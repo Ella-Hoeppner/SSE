@@ -1,12 +1,13 @@
 use std::fmt;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
 use crate::syntax::SyntaxTag;
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum Sexp<'s> {
-  List(Vec<Sexp<'s>>),
-  Leaf(&'s str),
+pub enum Sexp<'t> {
+  List(Vec<Sexp<'t>>),
+  Leaf(&'t str),
 }
 
 impl fmt::Display for Sexp<'_> {
@@ -28,19 +29,22 @@ impl fmt::Display for Sexp<'_> {
   }
 }
 
-pub(crate) type TaggedSexpList<'s, Tag> = (Tag, Vec<TaggedSexp<'s, Tag>>);
+pub(crate) type TaggedSexpList<'t, 'g, Tag> =
+  (Tag, Vec<TaggedSexp<'t, 'g, Tag>>);
 
 #[derive(Clone, Debug)]
-pub enum TaggedSexp<'s, Tag: SyntaxTag<'s>> {
-  Leaf(&'s str),
-  List(TaggedSexpList<'s, Tag>),
+pub enum TaggedSexp<'t, 'g, Tag: SyntaxTag<'g>> {
+  Leaf(&'t str),
+  List(TaggedSexpList<'t, 'g, Tag>, &'g PhantomData<()>),
 }
 
-impl<'s, Tag: SyntaxTag<'s>> From<TaggedSexp<'s, Tag>> for Sexp<'s> {
-  fn from(tagged_sexp: TaggedSexp<'s, Tag>) -> Self {
+impl<'t, 'g: 't, Tag: SyntaxTag<'g>> From<TaggedSexp<'t, 'g, Tag>>
+  for Sexp<'t>
+{
+  fn from(tagged_sexp: TaggedSexp<'t, 'g, Tag>) -> Self {
     match tagged_sexp {
       TaggedSexp::Leaf(leaf) => Sexp::Leaf(leaf),
-      TaggedSexp::List((tag, sub_sexps)) => Sexp::List({
+      TaggedSexp::List((tag, sub_sexps), _) => Sexp::List({
         let translated_sub_sexps =
           sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
         let tag_str = tag.tag_str();
