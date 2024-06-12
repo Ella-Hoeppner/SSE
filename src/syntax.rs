@@ -1,7 +1,4 @@
-use std::{
-  collections::HashMap, convert::Infallible, fmt::Debug, hash::Hash,
-  marker::PhantomData,
-};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
 pub trait SyntaxTag: Clone + Debug + PartialEq + Eq + Hash {
   fn tag_str(&self) -> &str;
@@ -37,14 +34,21 @@ pub(crate) enum SyntaxElement<
 
 #[derive(Clone, Debug)]
 pub struct SyntaxContext<Tag: SyntaxTag> {
+  whitespace_chars: Vec<char>,
   tags: Vec<Tag>,
 }
 impl<'g, Tag: SyntaxTag> SyntaxContext<Tag> {
-  pub fn new(tags: Vec<Tag>) -> Self {
-    Self { tags }
+  pub fn new(tags: Vec<Tag>, whitespace_chars: Vec<char>) -> Self {
+    Self {
+      whitespace_chars,
+      tags,
+    }
   }
   pub fn tags(&self) -> &[Tag] {
     &self.tags
+  }
+  pub fn is_whitespace(&self, c: char) -> bool {
+    self.whitespace_chars.contains(&c)
   }
 }
 

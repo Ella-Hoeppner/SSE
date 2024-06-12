@@ -1,12 +1,10 @@
 use std::{
   fmt::{Debug, Display},
   hash::Hash,
-  marker::PhantomData,
 };
 
 use crate::{
   sexp::{TaggedSexp, TaggedSexpList},
-  str_utils::is_whitespace,
   syntax::{
     Encloser, Operator, SymmetricEncloser, SyntaxElement, SyntaxGraph,
     SyntaxTag,
@@ -190,7 +188,6 @@ impl<
       indexed_characters.next()
     {
       let character_index = beginning_index + character_index_offset;
-      println!("{character_index}: {character}");
       macro_rules! finish_terminal {
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
@@ -214,7 +211,14 @@ impl<
           }
         };
       }
-      if is_whitespace(character) {
+      let active_context = self.syntax_graph.get_context(
+        self
+          .open_sexps
+          .last()
+          .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
+          .unwrap_or(&self.syntax_graph.root),
+      );
+      if active_context.is_whitespace(character) {
         finish_terminal!();
       } else {
         let remaining_text = &self.text[character_index..];
