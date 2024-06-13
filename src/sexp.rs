@@ -28,19 +28,17 @@ impl fmt::Display for Sexp {
   }
 }
 
-pub(crate) type TaggedSexpList<Tag> = (Tag, Vec<TaggedSexp<Tag>>);
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TaggedSexp<Tag: SyntaxTag> {
   Leaf(String),
-  List(TaggedSexpList<Tag>),
+  List(Tag, Vec<TaggedSexp<Tag>>),
 }
 
 impl<Tag: SyntaxTag> From<TaggedSexp<Tag>> for Sexp {
   fn from(tagged_sexp: TaggedSexp<Tag>) -> Self {
     match tagged_sexp {
       TaggedSexp::Leaf(leaf) => Sexp::Leaf(leaf),
-      TaggedSexp::List((tag, sub_sexps)) => Sexp::List({
+      TaggedSexp::List(tag, sub_sexps) => Sexp::List({
         let translated_sub_sexps =
           sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
         let tag_str = tag.tag_str();

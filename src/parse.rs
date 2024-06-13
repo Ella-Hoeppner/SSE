@@ -4,11 +4,8 @@ use std::{
 };
 
 use crate::{
-  sexp::{TaggedSexp, TaggedSexpList},
-  syntax::{
-    Encloser, Operator, SymmetricEncloser, SyntaxElement, SyntaxGraph,
-    SyntaxTag,
-  },
+  sexp::TaggedSexp,
+  syntax::{Encloser, Operator, SyntaxElement, SyntaxGraph, SyntaxTag},
 };
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -46,13 +43,12 @@ pub(crate) struct Parse<
   Tag: SyntaxTag,
   ContextTag: Clone + Debug + PartialEq + Eq + Hash,
   E: Encloser<Tag>,
-  SE: SymmetricEncloser<Tag>,
   O: Operator<Tag>,
 > {
   text: &'t str,
   inherited_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
-  syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, SE, O>,
-  open_sexps: Vec<TaggedSexpList<Tag>>,
+  syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, O>,
+  open_sexps: Vec<(Tag, Vec<TaggedSexp<Tag>>)>,
 }
 
 impl<
@@ -61,12 +57,11 @@ impl<
     Tag: SyntaxTag,
     ContextTag: Clone + Debug + PartialEq + Eq + Hash,
     E: Encloser<Tag>,
-    SE: SymmetricEncloser<Tag>,
     O: Operator<Tag>,
-  > Parse<'t, 'g, Tag, ContextTag, E, SE, O>
+  > Parse<'t, 'g, Tag, ContextTag, E, O>
 {
   pub(crate) fn new(
-    syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, SE, O>,
+    syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, O>,
     inherited_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
     text: &'t str,
   ) -> Self {
@@ -121,7 +116,7 @@ impl<
       .open_sexps
       .pop()
       .expect("called close_sexp with no open partial sexp");
-    let finished_sexp = TaggedSexp::List((tag, sub_sexps));
+    let finished_sexp = TaggedSexp::List(tag, sub_sexps);
     self.push_closed_sexp(finished_sexp)
   }
   fn push_closed_sexp(
@@ -155,9 +150,6 @@ impl<
         match self.syntax_graph.get_tag_element(&open_sexp.0) {
           SyntaxElement::Encloser(encloser) => {
             Some(encloser.closing_encloser_str())
-          }
-          SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
-            Some(symmetric_encloser.encloser_str())
           }
           _ => None,
         }
@@ -310,11 +302,6 @@ impl<
         SyntaxElement::Encloser(encloser) => {
           Err(ParseError::EndOfTextWithOpenEncloser(
             encloser.opening_encloser_str().to_string(),
-          ))
-        }
-        SyntaxElement::SymmetricEncloser(symmetric_encloser) => {
-          Err(ParseError::EndOfTextWithOpenEncloser(
-            symmetric_encloser.encloser_str().to_string(),
           ))
         }
         SyntaxElement::Operator(operator) => {
