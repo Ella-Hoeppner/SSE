@@ -11,7 +11,6 @@ pub use sexp::Sexp;
 pub use sexp::TaggedSexp;
 pub use syntax::Encloser;
 pub use syntax::Operator;
-pub use syntax::SymmetricEncloser;
 pub use syntax::SyntaxContext;
 pub use syntax::SyntaxGraph;
 

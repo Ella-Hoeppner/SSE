@@ -3,11 +3,10 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
-* finish pseudo-clj example
-* try to get rid of `SymmetricEncloser`, I don't think it's actually pulling much weight
-  * and in this case maybe we can get rid of the whole notion of `Tag` in the parser, and just have like `EncloserTag` and `OperatorTag`. `TaggedSexp` I guess could have two cases, like `Enclosed` or `Operated`.
+* try to get rid of the whole notion of `Tag` in the parser, and just have like `EncloserTag` and `OperatorTag`. I guess `TaggedSexp` could have two cases, like `Enclosed` or `Operated`. This seems much better from a typing perspective.
 * treating comments as sexps turns out to be a bit problematic - they get inserted as elements wherever they appear in the syntax tree, which is strange, and it also means they can take up space in operators, which is definitely a big problem
   * Probably need special logic to account for this. Maybe allow certain tags (or context tags?) to be treated, from the outside, as whitespace??
+  * once this is solved, prove it works with a clj example
 * LSP
 * support turning a `Sexp` back into a `TaggedSexp` for a given `SyntaxGraph`
 * pretty printing

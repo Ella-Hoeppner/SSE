@@ -1,8 +1,7 @@
 use crate::{
   parse::Parse,
   syntax::{SyntaxElement, SyntaxTag},
-  Encloser, Operator, ParseError, Sexp, SymmetricEncloser, SyntaxGraph,
-  TaggedSexp,
+  Encloser, Operator, ParseError, Sexp, SyntaxGraph, TaggedSexp,
 };
 use std::{fmt::Debug, hash::Hash};
 
@@ -12,11 +11,10 @@ pub struct Parser<
   Tag: SyntaxTag,
   ContextTag: Clone + Debug + PartialEq + Eq + Hash,
   E: Encloser<Tag>,
-  SE: SymmetricEncloser<Tag>,
   O: Operator<Tag>,
 > {
   text: &'t str,
-  syntax_graph: SyntaxGraph<Tag, ContextTag, E, SE, O>,
+  syntax_graph: SyntaxGraph<Tag, ContextTag, E, O>,
   parsed_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
@@ -27,12 +25,11 @@ impl<
     Tag: SyntaxTag,
     ContextTag: Clone + Debug + PartialEq + Eq + Hash,
     E: Encloser<Tag>,
-    SE: SymmetricEncloser<Tag>,
     O: Operator<Tag>,
-  > Parser<'t, Tag, ContextTag, E, SE, O>
+  > Parser<'t, Tag, ContextTag, E, O>
 {
   pub fn new(
-    syntax_graph: SyntaxGraph<Tag, ContextTag, E, SE, O>,
+    syntax_graph: SyntaxGraph<Tag, ContextTag, E, O>,
     text: &'t str,
   ) -> Self {
     Self {
@@ -57,7 +54,7 @@ impl<
   }
   pub fn replace_syntax_graph(
     &mut self,
-    new_syntax_graph: SyntaxGraph<Tag, ContextTag, E, SE, O>,
+    new_syntax_graph: SyntaxGraph<Tag, ContextTag, E, O>,
   ) {
     self.syntax_graph = new_syntax_graph;
     self.parsed_top_level_sexps.clear();

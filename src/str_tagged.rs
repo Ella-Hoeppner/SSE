@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use crate::syntax::{
-  Encloser, Operator, SymmetricEncloser, SyntaxContext, SyntaxGraph, SyntaxTag,
+  Encloser, Operator, SyntaxContext, SyntaxGraph, SyntaxTag,
 };
 
 impl SyntaxTag for &str {
@@ -27,21 +25,6 @@ impl<'g> Encloser<&'g str> for StringTaggedEncloser<'g> {
 
   fn closing_encloser_str(&self) -> &'g str {
     self.closer
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct StringTaggedSymmetricEncloser<'g> {
-  encloser: &'g str,
-}
-impl<'g> StringTaggedSymmetricEncloser<'g> {
-  pub fn new(encloser: &'g str) -> Self {
-    Self { encloser }
-  }
-}
-impl<'g> SymmetricEncloser<&'g str> for StringTaggedSymmetricEncloser<'g> {
-  fn encloser_str(&self) -> &'g str {
-    self.encloser
   }
 }
 
@@ -78,7 +61,6 @@ pub type StringTaggedSyntaxGraph<'g> = SyntaxGraph<
   &'g str,
   &'g str,
   StringTaggedEncloser<'g>,
-  StringTaggedSymmetricEncloser<'g>,
   StringTaggedOperator<'g>,
 >;
 
@@ -89,23 +71,6 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
     encloser_descriptions: Vec<(&'g str, &'g str, &'g str, &'g str)>,
     operator_descriptions: Vec<(&'g str, &'g str, usize, usize, &'g str)>,
   ) -> Self {
-    let mut enclosers = vec![];
-    let mut symmetric_enclosers = vec![];
-    for (tag, opener, closer, context_tag) in encloser_descriptions {
-      if opener == closer {
-        symmetric_enclosers.push((
-          tag,
-          StringTaggedSymmetricEncloser::new(opener),
-          context_tag,
-        ));
-      } else {
-        enclosers.push((
-          tag,
-          StringTaggedEncloser::new(opener, closer),
-          context_tag,
-        ));
-      }
-    }
     Self::new(
       root,
       context_descriptions
@@ -118,9 +83,13 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
             )
           },
         )
-        .collect::<HashMap<_, _>>(),
-      enclosers,
-      symmetric_enclosers,
+        .collect(),
+      encloser_descriptions
+        .into_iter()
+        .map(|(tag, opener, closer, context_tag)| {
+          (tag, StringTaggedEncloser::new(opener, closer), context_tag)
+        })
+        .collect(),
       operator_descriptions
         .into_iter()
         .map(|(tag, operator, left_args, right_args, context_tag)| {
