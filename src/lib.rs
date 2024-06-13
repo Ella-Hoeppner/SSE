@@ -1,3 +1,4 @@
+pub mod examples;
 mod parse;
 mod parser;
 mod sexp;

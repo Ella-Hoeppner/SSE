@@ -3,6 +3,11 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
+* Bug: When an asymmetric closer is identical to a symmetric opener, it returns an `UnexpectedCloser` error.
+  * E.g. the clj-like syntax has `"..."` for strings but also `#".."` for regexes, and trying to open a string fails because it sees the `"` as a closer of a `#"..."` rather than an opener of `"..."`
+    * I guess I need an explicit check of openers before closers to fix this. But if I do that then is there any advantage to having `SymmetricEncloser` being a second thing? Maybe I can just get rid of that. Would simplify the API quite a bit.
+* treating comments as sexps turns out to be a bit problematic - they get inserted as elements wherever they appear in the syntax tree, which is strange, and it also means they can take up space in operators, which is definitely a big problem
+  * Probably need special logic to account for this. Maybe allow certain tags (or context tags?) to be treated, from the outside, as whitespace??
 * create a clojure-like language as an example, including strings, single-line comments, and block-comments
 * LSP
 * support turning a `Sexp` back into a `TaggedSexp` for a given `SyntaxGraph`
@@ -14,6 +19,7 @@ A parser for **S**ugared **S**-**E**xpressions.
 * validate the coherence of syntax graph
   * things to validate:
     * no `ContextTag`s or `Tag`s should be duplicated
+    * `Encloser`s are not symmetric
     * all `SyntaxTag`s have unique `tag_str`s
     * root `Tag` must exist in the syntax graph
     * all `Tag`s must exist in at least one context, or be the root

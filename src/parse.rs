@@ -171,7 +171,6 @@ impl<
     Result<Vec<(TaggedSexp<Tag>, usize)>, Vec<(TaggedSexp<Tag>, usize)>>,
     ParseError,
   > {
-    let mut current_terminal_beginning: Option<usize> = None;
     let beginning_index = self
       .inherited_top_level_sexps
       .last()
@@ -180,16 +179,21 @@ impl<
     if beginning_index >= self.text.len() {
       return Ok(Err(self.inherited_top_level_sexps));
     }
+
     let mut indexed_characters = self.text[beginning_index..]
       .char_indices()
       .chain(std::iter::once((self.text.len() - beginning_index, ' ')))
       .peekable();
+
+    let mut current_terminal_beginning: Option<usize> = None;
     let mut escaped = false;
+
     'outer: while let Some((character_index_offset, character)) =
       indexed_characters.next()
     {
       let character_index = beginning_index + character_index_offset;
-      println!("\n{character_index}: {character} ({escaped})");
+      println!("\n{character_index}: {character}");
+
       macro_rules! finish_terminal {
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
@@ -213,6 +217,7 @@ impl<
           }
         };
       }
+
       let active_context = self.syntax_graph.get_context(
         self
           .open_sexps
@@ -220,6 +225,8 @@ impl<
           .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root),
       );
+      //println!("active_context: {active_context:?}");
+
       if escaped {
         escaped = false;
       } else if active_context.escape_char == Some(character) {
@@ -230,10 +237,15 @@ impl<
         finish_terminal!();
       } else {
         let remaining_text = &self.text[character_index..];
+
+        //println!("awaiting closer: {:?}", self.awaited_closer());
         if let Some(awaited_closer) = self.awaited_closer() {
           if remaining_text.starts_with(awaited_closer) {
+            println!("matched awaited closer {:?}", self.awaited_closer());
             finish_terminal!();
+
             let closer_len = awaited_closer.len();
+
             if let Some((tag, _)) = self.open_sexps.last() {
               if let SyntaxElement::Operator(operator) =
                 self.syntax_graph.get_tag_element(tag)
@@ -243,6 +255,7 @@ impl<
                 ));
               }
             }
+
             if let Some(completed_sexp) = self.close_sexp() {
               let mut top_level_sexps = self.inherited_top_level_sexps;
               top_level_sexps
@@ -254,6 +267,7 @@ impl<
             }
           }
         }
+
         let active_context_tag = self
           .open_sexps
           .last()
@@ -263,12 +277,17 @@ impl<
           self.syntax_graph.get_asymmetric_closers(active_context_tag)
         {
           if remaining_text.starts_with(closer) {
+            println!(
+              "matched unexpected closer!! {:?}",
+              self.syntax_graph.get_asymmetric_closers(active_context_tag)
+            );
             return Err(ParseError::UnexpectedCloser(closer.to_string()));
           }
         }
         for tag in self.syntax_graph.get_context(active_context_tag).tags() {
           let beginning_marker = self.syntax_graph.get_beginning_marker(tag);
           if remaining_text.starts_with(beginning_marker) {
+            println!("matched beginning marker: {beginning_marker}");
             finish_terminal!();
             let leftward_args = self.consume_left_sexps(tag)?;
             self.open_sexps.push((tag.clone(), leftward_args));
@@ -281,6 +300,7 @@ impl<
         }
       }
     }
+
     match self.open_sexps.last() {
       None => Ok(Err(self.inherited_top_level_sexps)),
       Some((tag, _)) => match self.syntax_graph.get_tag_element(tag) {
