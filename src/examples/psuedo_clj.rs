@@ -274,7 +274,7 @@ pub fn clj_graph() -> CljSyntaxGraph {
 }
 
 #[cfg(test)]
-mod tests {
+mod pseudo_clj_tests {
   use crate::{
     examples::psuedo_clj::{
       clj_graph, CljEncloser, CljOperator, CljSymmetricEncloser, CljSyntax,
@@ -291,7 +291,7 @@ mod tests {
         clj_graph(),
         "(+ (second [1 2 3])
             (count \"this is a string!!!\")
-            (first (keys {1 2 3 4}))
+            (first (keys ^my-metadata {1 2 3 4}))
             @my-atom)"
       )
       .read_next_tagged_sexp(),
@@ -329,21 +329,24 @@ mod tests {
               Leaf("first".to_string()),
               List((
                 Encloser(CljEncloser::List),
-                vec![List((
-                  Encloser(CljEncloser::List),
-                  vec![
-                    Leaf("keys".to_string()),
-                    List((
-                      Encloser(CljEncloser::HashMap),
-                      vec![
-                        Leaf("1".to_string()),
-                        Leaf("2".to_string()),
-                        Leaf("3".to_string()),
-                        Leaf("4".to_string())
-                      ]
-                    ))
-                  ]
-                ))]
+                vec![
+                  Leaf("keys".to_string()),
+                  List((
+                    Operator(CljOperator::Metadata),
+                    vec![
+                      Leaf("my-metadata".to_string()),
+                      List((
+                        Encloser(CljEncloser::HashMap),
+                        vec![
+                          Leaf("1".to_string()),
+                          Leaf("2".to_string()),
+                          Leaf("3".to_string()),
+                          Leaf("4".to_string())
+                        ]
+                      ))
+                    ]
+                  ))
+                ]
               ))
             ]
           )),

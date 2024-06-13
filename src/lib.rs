@@ -16,7 +16,7 @@ pub use syntax::SyntaxContext;
 pub use syntax::SyntaxGraph;
 
 #[cfg(test)]
-mod tests {
+mod core_tests {
   use crate::{
     str_tagged::StringTaggedSyntaxGraph, ParseError, Parser, Sexp::*,
   };
