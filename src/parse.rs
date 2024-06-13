@@ -273,17 +273,7 @@ impl<
           .last()
           .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root);
-        for closer in
-          self.syntax_graph.get_asymmetric_closers(active_context_tag)
-        {
-          if remaining_text.starts_with(closer) {
-            println!(
-              "matched unexpected closer!! {:?}",
-              self.syntax_graph.get_asymmetric_closers(active_context_tag)
-            );
-            return Err(ParseError::UnexpectedCloser(closer.to_string()));
-          }
-        }
+
         for tag in self.syntax_graph.get_context(active_context_tag).tags() {
           let beginning_marker = self.syntax_graph.get_beginning_marker(tag);
           if remaining_text.starts_with(beginning_marker) {
@@ -295,6 +285,19 @@ impl<
             continue 'outer;
           }
         }
+
+        for closer in
+          self.syntax_graph.get_asymmetric_closers(active_context_tag)
+        {
+          if remaining_text.starts_with(closer) {
+            println!(
+              "matched unexpected closer!! {:?}",
+              self.syntax_graph.get_asymmetric_closers(active_context_tag)
+            );
+            return Err(ParseError::UnexpectedCloser(closer.to_string()));
+          }
+        }
+
         if current_terminal_beginning.is_none() {
           current_terminal_beginning = Some(character_index)
         }
