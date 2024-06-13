@@ -30,7 +30,7 @@ impl fmt::Display for Sexp {
 
 pub(crate) type TaggedSexpList<Tag> = (Tag, Vec<TaggedSexp<Tag>>);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TaggedSexp<Tag: SyntaxTag> {
   Leaf(String),
   List(TaggedSexpList<Tag>),
