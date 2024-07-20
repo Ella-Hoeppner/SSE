@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::syntax::SyntaxTag;
+use crate::{Encloser, Operator};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Sexp {
@@ -29,19 +29,32 @@ impl fmt::Display for Sexp {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TaggedSexp<Tag: SyntaxTag> {
+pub enum TaggedSexp<E: Encloser, O: Operator> {
   Leaf(String),
-  List(Tag, Vec<TaggedSexp<Tag>>),
+  Enclosed(E, Vec<TaggedSexp<E, O>>),
+  Operated(O, Vec<TaggedSexp<E, O>>),
 }
 
-impl<Tag: SyntaxTag> From<TaggedSexp<Tag>> for Sexp {
-  fn from(tagged_sexp: TaggedSexp<Tag>) -> Self {
+impl<E: Encloser, O: Operator> From<TaggedSexp<E, O>> for Sexp {
+  fn from(tagged_sexp: TaggedSexp<E, O>) -> Self {
     match tagged_sexp {
       TaggedSexp::Leaf(leaf) => Sexp::Leaf(leaf),
-      TaggedSexp::List(tag, sub_sexps) => Sexp::List({
+      TaggedSexp::Enclosed(encloser, sub_sexps) => Sexp::List({
         let translated_sub_sexps =
           sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
-        let tag_str = tag.tag_str();
+        let tag_str = encloser.id_str();
+        if tag_str.is_empty() {
+          translated_sub_sexps.collect()
+        } else {
+          std::iter::once(Sexp::Leaf(tag_str.to_string()))
+            .chain(translated_sub_sexps)
+            .collect()
+        }
+      }),
+      TaggedSexp::Operated(operator, sub_sexps) => Sexp::List({
+        let translated_sub_sexps =
+          sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
+        let tag_str = operator.id_str();
         if tag_str.is_empty() {
           translated_sub_sexps.collect()
         } else {
