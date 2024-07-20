@@ -8,7 +8,7 @@ pub mod syntax;
 pub use parse::ParseError;
 pub use parser::Parser;
 pub use sexp::Sexp;
-pub use sexp::TaggedSexp;
+pub use sexp::SyntaxTree;
 pub use syntax::Encloser;
 pub use syntax::Operator;
 pub use syntax::SyntaxContext;
@@ -17,8 +17,17 @@ pub use syntax::SyntaxGraph;
 #[cfg(test)]
 mod core_tests {
   use crate::{
-    str_tagged::StringTaggedSyntaxGraph, ParseError, Parser, Sexp::*,
+    sexp::RawSexp, str_tagged::StringTaggedSyntaxGraph, ParseError, Parser,
+    Sexp::*,
   };
+
+  fn leaf(s: String) -> RawSexp {
+    RawSexp::leaf(s)
+  }
+
+  fn inner(subexpressions: Vec<RawSexp>) -> RawSexp {
+    RawSexp::inner(subexpressions)
+  }
 
   fn sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
@@ -91,7 +100,7 @@ mod core_tests {
   fn sexp_terminal() {
     assert_eq!(
       Parser::new(sexp_graph(), "hello!").read_next_sexp(),
-      Ok(Some(Leaf("hello!".to_string())))
+      Ok(Some(leaf("hello!".to_string())))
     );
   }
 
@@ -99,10 +108,10 @@ mod core_tests {
   fn sexp_whitespaced_list() {
     assert_eq!(
       Parser::new(sexp_graph(), "( + 1 2 )").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("+".to_string()),
-        Leaf("1".to_string()),
-        Leaf("2".to_string())
+      Ok(Some(inner(vec![
+        leaf("+".to_string()),
+        leaf("1".to_string()),
+        leaf("2".to_string())
       ])))
     );
   }
@@ -111,7 +120,7 @@ mod core_tests {
   fn sexp_list() {
     assert_eq!(
       Parser::new(sexp_graph(), "(1)").read_next_sexp(),
-      Ok(Some(List(vec![Leaf("1".to_string())])))
+      Ok(Some(inner(vec![leaf("1".to_string())])))
     );
   }
 
@@ -119,7 +128,7 @@ mod core_tests {
   fn sexp_terminal_non_whitespaced_into_opener() {
     assert_eq!(
       Parser::new(sexp_graph(), "(hello?())").read_next_sexp(),
-      Ok(Some(List(vec![Leaf("hello?".to_string()), List(vec![])])))
+      Ok(Some(inner(vec![leaf("hello?".to_string()), inner(vec![])])))
     );
   }
 
@@ -127,13 +136,13 @@ mod core_tests {
   fn sexp_nested_list() {
     assert_eq!(
       Parser::new(sexp_graph(), "(+ 1 (* 2 3))").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("+".to_string()),
-        Leaf("1".to_string()),
-        List(vec![
-          Leaf("*".to_string()),
-          Leaf("2".to_string()),
-          Leaf("3".to_string())
+      Ok(Some(inner(vec![
+        leaf("+".to_string()),
+        leaf("1".to_string()),
+        inner(vec![
+          leaf("*".to_string()),
+          leaf("2".to_string()),
+          leaf("3".to_string())
         ]),
       ])))
     );
@@ -151,10 +160,10 @@ mod core_tests {
   fn square_bracket() {
     assert_eq!(
       Parser::new(multi_bracket_graph(), "[1 2]").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf(":SQUARE".to_string()),
-        Leaf("1".to_string()),
-        Leaf("2".to_string())
+      Ok(Some(inner(vec![
+        leaf(":SQUARE".to_string()),
+        leaf("1".to_string()),
+        leaf("2".to_string())
       ])))
     );
   }
@@ -163,13 +172,13 @@ mod core_tests {
   fn nested_brackets() {
     assert_eq!(
       Parser::new(multi_bracket_graph(), "([{#{hello!}}])").read_next_sexp(),
-      Ok(Some(List(vec![List(vec![
-        Leaf(":SQUARE".to_string()),
-        List(vec![
-          Leaf(":CURLY".to_string()),
-          List(vec![
-            Leaf(":HASH_CURLY".to_string()),
-            Leaf("hello!".to_string())
+      Ok(Some(inner(vec![inner(vec![
+        leaf(":SQUARE".to_string()),
+        inner(vec![
+          leaf(":CURLY".to_string()),
+          inner(vec![
+            leaf(":HASH_CURLY".to_string()),
+            leaf("hello!".to_string())
           ]),
         ]),
       ])])))
@@ -180,14 +189,14 @@ mod core_tests {
   fn nested_brackets_extra_hash() {
     assert_eq!(
       Parser::new(multi_bracket_graph(), "([{####{hello!}}])").read_next_sexp(),
-      Ok(Some(List(vec![List(vec![
-        Leaf(":SQUARE".to_string()),
-        List(vec![
-          Leaf(":CURLY".to_string()),
-          Leaf("###".to_string()),
-          List(vec![
-            Leaf(":HASH_CURLY".to_string()),
-            Leaf("hello!".to_string())
+      Ok(Some(inner(vec![inner(vec![
+        leaf(":SQUARE".to_string()),
+        inner(vec![
+          leaf(":CURLY".to_string()),
+          leaf("###".to_string()),
+          inner(vec![
+            leaf(":HASH_CURLY".to_string()),
+            leaf("hello!".to_string())
           ]),
         ]),
       ])])))
@@ -206,9 +215,9 @@ mod core_tests {
   fn prefix_op() {
     assert_eq!(
       Parser::new(quote_sexp_graph(), "'hello!").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("QUOTE".to_string()),
-        Leaf("hello!".to_string())
+      Ok(Some(inner(vec![
+        leaf("QUOTE".to_string()),
+        leaf("hello!".to_string())
       ])))
     );
   }
@@ -217,9 +226,9 @@ mod core_tests {
   fn prefix_op_in_list() {
     assert_eq!(
       Parser::new(quote_sexp_graph(), "('hello! goodbye!)").read_next_sexp(),
-      Ok(Some(List(vec![
-        List(vec![Leaf("QUOTE".to_string()), Leaf("hello!".to_string())]),
-        Leaf("goodbye!".to_string())
+      Ok(Some(inner(vec![
+        inner(vec![leaf("QUOTE".to_string()), leaf("hello!".to_string())]),
+        leaf("goodbye!".to_string())
       ])))
     );
   }
@@ -228,10 +237,10 @@ mod core_tests {
   fn top_level_infix_op() {
     assert_eq!(
       Parser::new(plus_sexp_graph(), "1+2").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("PLUS".to_string()),
-        Leaf("1".to_string()),
-        Leaf("2".to_string())
+      Ok(Some(inner(vec![
+        leaf("PLUS".to_string()),
+        leaf("1".to_string()),
+        leaf("2".to_string())
       ])))
     );
   }
@@ -240,10 +249,10 @@ mod core_tests {
   fn infix_op_in_list() {
     assert_eq!(
       Parser::new(plus_sexp_graph(), "(1+2)").read_next_sexp(),
-      Ok(Some(List(vec![List(vec![
-        Leaf("PLUS".to_string()),
-        Leaf("1".to_string()),
-        Leaf("2".to_string())
+      Ok(Some(inner(vec![inner(vec![
+        leaf("PLUS".to_string()),
+        leaf("1".to_string()),
+        leaf("2".to_string())
       ])])))
     );
   }
@@ -252,14 +261,14 @@ mod core_tests {
   fn nested_infix_op_in_list() {
     assert_eq!(
       Parser::new(plus_sexp_graph(), "(1+2+3)").read_next_sexp(),
-      Ok(Some(List(vec![List(vec![
-        Leaf("PLUS".to_string()),
-        List(vec![
-          Leaf("PLUS".to_string()),
-          Leaf("1".to_string()),
-          Leaf("2".to_string())
+      Ok(Some(inner(vec![inner(vec![
+        leaf("PLUS".to_string()),
+        inner(vec![
+          leaf("PLUS".to_string()),
+          leaf("1".to_string()),
+          leaf("2".to_string())
         ]),
-        Leaf("3".to_string())
+        leaf("3".to_string())
       ])])))
     );
   }
@@ -268,13 +277,13 @@ mod core_tests {
   fn terminals_after_infix_op_in_list() {
     assert_eq!(
       Parser::new(plus_sexp_graph(), "(1+2 3)").read_next_sexp(),
-      Ok(Some(List(vec![
-        List(vec![
-          Leaf("PLUS".to_string()),
-          Leaf("1".to_string()),
-          Leaf("2".to_string())
+      Ok(Some(inner(vec![
+        inner(vec![
+          leaf("PLUS".to_string()),
+          leaf("1".to_string()),
+          leaf("2".to_string())
         ]),
-        Leaf("3".to_string())
+        leaf("3".to_string())
       ])))
     );
   }
@@ -333,12 +342,12 @@ mod core_tests {
         "(> < [<>])"
       )
       .read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf(">".to_string()),
-        Leaf("<".to_string()),
-        List(vec![
-          Leaf("SQUARE".to_string()),
-          List(vec![Leaf("ANGLE".to_string())])
+      Ok(Some(inner(vec![
+        leaf(">".to_string()),
+        leaf("<".to_string()),
+        inner(vec![
+          leaf("SQUARE".to_string()),
+          inner(vec![leaf("ANGLE".to_string())])
         ]),
       ])))
     );
@@ -365,14 +374,14 @@ mod core_tests {
         "((> 1 0) : <Bool>)"
       )
       .read_next_sexp(),
-      Ok(Some(List(vec![List(vec![
-        Leaf("COLON".to_string()),
-        List(vec![
-          Leaf(">".to_string()),
-          Leaf("1".to_string()),
-          Leaf("0".to_string())
+      Ok(Some(inner(vec![inner(vec![
+        leaf("COLON".to_string()),
+        inner(vec![
+          leaf(">".to_string()),
+          leaf("1".to_string()),
+          leaf("0".to_string())
         ]),
-        List(vec![Leaf("ANGLE".to_string()), Leaf("Bool".to_string())])
+        inner(vec![leaf("ANGLE".to_string()), leaf("Bool".to_string())])
       ])])))
     );
   }
@@ -381,11 +390,11 @@ mod core_tests {
   fn symmetric_encloser() {
     assert_eq!(
       Parser::new(pipe_sexp_graph(), "|+ 1 2|").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("PIPE".to_string()),
-        Leaf("+".to_string()),
-        Leaf("1".to_string()),
-        Leaf("2".to_string())
+      Ok(Some(inner(vec![
+        leaf("PIPE".to_string()),
+        leaf("+".to_string()),
+        leaf("1".to_string()),
+        leaf("2".to_string())
       ])))
     );
   }
@@ -394,7 +403,7 @@ mod core_tests {
   fn escaped_closer() {
     assert_eq!(
       Parser::new(sexp_graph(), "(\\))").read_next_sexp(),
-      Ok(Some(List(vec![Leaf("\\)".to_string())])))
+      Ok(Some(inner(vec![leaf("\\)".to_string())])))
     );
   }
 
@@ -402,7 +411,7 @@ mod core_tests {
   fn escaped_opener() {
     assert_eq!(
       Parser::new(sexp_graph(), "(\\()").read_next_sexp(),
-      Ok(Some(List(vec![Leaf("\\(".to_string())])))
+      Ok(Some(inner(vec![leaf("\\(".to_string())])))
     );
   }
 
@@ -410,7 +419,7 @@ mod core_tests {
   fn escaped_operator() {
     assert_eq!(
       Parser::new(plus_sexp_graph(), "(\\+)").read_next_sexp(),
-      Ok(Some(List(vec![Leaf("\\+".to_string())])))
+      Ok(Some(inner(vec![leaf("\\+".to_string())])))
     );
   }
 
@@ -418,14 +427,14 @@ mod core_tests {
   fn symmetric_enclosers_in_list() {
     assert_eq!(
       Parser::new(pipe_sexp_graph(), "(|+ 1 2| |a|)").read_next_sexp(),
-      Ok(Some(List(vec![
-        List(vec![
-          Leaf("PIPE".to_string()),
-          Leaf("+".to_string()),
-          Leaf("1".to_string()),
-          Leaf("2".to_string())
+      Ok(Some(inner(vec![
+        inner(vec![
+          leaf("PIPE".to_string()),
+          leaf("+".to_string()),
+          leaf("1".to_string()),
+          leaf("2".to_string())
         ]),
-        List(vec![Leaf("PIPE".to_string()), Leaf("a".to_string())])
+        inner(vec![leaf("PIPE".to_string()), leaf("a".to_string())])
       ])))
     );
   }
@@ -434,11 +443,11 @@ mod core_tests {
   fn nested_symmetric_enclosers() {
     assert_eq!(
       Parser::new(pipe_sexp_graph(), "|(|a|)|").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("PIPE".to_string()),
-        List(vec![List(vec![
-          Leaf("PIPE".to_string()),
-          Leaf("a".to_string())
+      Ok(Some(inner(vec![
+        leaf("PIPE".to_string()),
+        inner(vec![inner(vec![
+          leaf("PIPE".to_string()),
+          leaf("a".to_string())
         ])])
       ])))
     );
@@ -449,18 +458,18 @@ mod core_tests {
     let mut parser = Parser::new(sexp_graph(), "(+ 1 2) (* 3 4)");
     assert_eq!(
       parser.read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("+".to_string()),
-        Leaf("1".to_string()),
-        Leaf("2".to_string())
+      Ok(Some(inner(vec![
+        leaf("+".to_string()),
+        leaf("1".to_string()),
+        leaf("2".to_string())
       ])))
     );
     assert_eq!(
       parser.read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("*".to_string()),
-        Leaf("3".to_string()),
-        Leaf("4".to_string())
+      Ok(Some(inner(vec![
+        leaf("*".to_string()),
+        leaf("3".to_string()),
+        leaf("4".to_string())
       ])))
     );
   }
@@ -469,10 +478,10 @@ mod core_tests {
   fn read_all_single_sexp() {
     assert_eq!(
       Parser::new(sexp_graph(), "(+ 1 2)").read_all_sexps(),
-      vec![Ok(List(vec![
-        Leaf("+".to_string()),
-        Leaf("1".to_string()),
-        Leaf("2".to_string())
+      vec![Ok(inner(vec![
+        leaf("+".to_string()),
+        leaf("1".to_string()),
+        leaf("2".to_string())
       ]))]
     );
   }
@@ -482,15 +491,15 @@ mod core_tests {
     assert_eq!(
       Parser::new(sexp_graph(), "(+ 1 2) (* 3 4)").read_all_sexps(),
       vec![
-        Ok(List(vec![
-          Leaf("+".to_string()),
-          Leaf("1".to_string()),
-          Leaf("2".to_string())
+        Ok(inner(vec![
+          leaf("+".to_string()),
+          leaf("1".to_string()),
+          leaf("2".to_string())
         ])),
-        Ok(List(vec![
-          Leaf("*".to_string()),
-          Leaf("3".to_string()),
-          Leaf("4".to_string())
+        Ok(inner(vec![
+          leaf("*".to_string()),
+          leaf("3".to_string()),
+          leaf("4".to_string())
         ]))
       ]
     );
@@ -501,10 +510,10 @@ mod core_tests {
     assert_eq!(
       Parser::new(sexp_graph(), "(+ 1 2) (* 3 4").read_all_sexps(),
       vec![
-        Ok(List(vec![
-          Leaf("+".to_string()),
-          Leaf("1".to_string()),
-          Leaf("2".to_string())
+        Ok(inner(vec![
+          leaf("+".to_string()),
+          leaf("1".to_string()),
+          leaf("2".to_string())
         ])),
         Err(ParseError::EndOfTextWithOpenEncloser("(".to_string()))
       ]
@@ -519,15 +528,15 @@ mod core_tests {
         "(before string \" inside string!!! \" after string)"
       )
       .read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("before".to_string()),
-        Leaf("string".to_string()),
-        List(vec![
-          Leaf("STRING".to_string()),
-          Leaf(" inside string!!! ".to_string()),
+      Ok(Some(inner(vec![
+        leaf("before".to_string()),
+        leaf("string".to_string()),
+        inner(vec![
+          leaf("STRING".to_string()),
+          leaf(" inside string!!! ".to_string()),
         ]),
-        Leaf("after".to_string()),
-        Leaf("string".to_string()),
+        leaf("after".to_string()),
+        leaf("string".to_string()),
       ])))
     );
   }
@@ -536,9 +545,9 @@ mod core_tests {
   fn contextful_escape() {
     assert_eq!(
       Parser::new(string_sexp_graph(), "\"\\\"\"").read_next_sexp(),
-      Ok(Some(List(vec![
-        Leaf("STRING".to_string()),
-        Leaf("\\\"".to_string()),
+      Ok(Some(inner(vec![
+        leaf("STRING".to_string()),
+        leaf("\\\"".to_string()),
       ])))
     );
   }

@@ -1,6 +1,6 @@
 use crate::{
-  parse::Parse, syntax::EncloserOrOperator, Encloser, Operator, ParseError,
-  Sexp, SyntaxGraph, TaggedSexp,
+  parse::Parse, sexp::RawSexp, Encloser, Operator, ParseError, Sexp,
+  SyntaxGraph, SyntaxTree,
 };
 use std::{fmt::Debug, hash::Hash};
 
@@ -13,7 +13,7 @@ pub struct Parser<
 > {
   text: &'t str,
   syntax_graph: SyntaxGraph<ContextTag, E, O>,
-  parsed_top_level_sexps: Vec<(TaggedSexp<E, O>, usize)>,
+  parsed_top_level_sexps: Vec<(SyntaxTree<E, O>, usize)>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
 }
@@ -52,7 +52,7 @@ impl<
   }
   pub fn read_next_tagged_sexp(
     &mut self,
-  ) -> Result<Option<TaggedSexp<E, O>>, ParseError> {
+  ) -> Result<Option<SyntaxTree<E, O>>, ParseError> {
     while self.parsed_top_level_sexps.len() <= self.top_level_lookahead {
       let mut stolen_top_level_sexps = vec![];
       std::mem::swap(
@@ -80,14 +80,14 @@ impl<
       },
     )
   }
-  pub fn read_next_sexp(&mut self) -> Result<Option<Sexp>, ParseError> {
+  pub fn read_next_sexp(&mut self) -> Result<Option<RawSexp>, ParseError> {
     self.read_next_tagged_sexp().map(|maybe_tagged_sexp| {
       maybe_tagged_sexp.map(|tagged_sexp| tagged_sexp.into())
     })
   }
   pub fn read_all_tagged_sexps(
     &mut self,
-  ) -> Vec<Result<TaggedSexp<E, O>, ParseError>> {
+  ) -> Vec<Result<SyntaxTree<E, O>, ParseError>> {
     let mut results = vec![];
     loop {
       match self.read_next_tagged_sexp() {
@@ -101,7 +101,7 @@ impl<
     }
     results
   }
-  pub fn read_all_sexps(&mut self) -> Vec<Result<Sexp, ParseError>> {
+  pub fn read_all_sexps(&mut self) -> Vec<Result<RawSexp, ParseError>> {
     self
       .read_all_tagged_sexps()
       .into_iter()
