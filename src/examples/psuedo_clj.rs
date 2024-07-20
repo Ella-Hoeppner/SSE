@@ -190,14 +190,24 @@ pub fn clj_graph() -> CljSyntaxGraph {
 mod pseudo_clj_tests {
   use crate::{
     examples::psuedo_clj::{clj_graph, CljEncloser, CljOperator},
-    Parser, TaggedSexp,
+    syntax::EncloserOrOperator,
+    Parser, SyntaxTree,
   };
   use CljEncloser::*;
   use CljOperator::*;
-  use TaggedSexp::*;
+  use EncloserOrOperator::*;
 
   #[test]
   fn test_data() {
+    fn leaf(s: &str) -> SyntaxTree<CljEncloser, CljOperator> {
+      SyntaxTree::Leaf((), s.to_string())
+    }
+    fn inner(
+      encloser_op_operator: EncloserOrOperator<CljEncloser, CljOperator>,
+      subexpressions: Vec<SyntaxTree<CljEncloser, CljOperator>>,
+    ) -> SyntaxTree<CljEncloser, CljOperator> {
+      SyntaxTree::Inner(encloser_op_operator, subexpressions)
+    }
     assert_eq!(
       Parser::new(
         clj_graph(),
@@ -207,51 +217,39 @@ mod pseudo_clj_tests {
             @my-atom)"
       )
       .read_next_tagged_sexp(),
-      Ok(Some(Enclosed(
-        List,
+      Ok(Some(inner(
+        Encloser(List),
         vec![
-          Leaf("+".to_string()),
-          Enclosed(
-            List,
+          leaf("+"),
+          inner(
+            Encloser(List),
             vec![
-              Leaf("second".to_string()),
-              Enclosed(
-                Vector,
-                vec![
-                  Leaf("1".to_string()),
-                  Leaf("2".to_string()),
-                  Leaf("3".to_string())
-                ]
-              )
+              leaf("second"),
+              inner(Encloser(Vector), vec![leaf("1"), leaf("2"), leaf("3")])
             ]
           ),
-          Enclosed(
-            List,
+          inner(
+            Encloser(List),
             vec![
-              Leaf("count".to_string()),
-              Enclosed(String, vec![Leaf("this is a string!!!".to_string())])
+              leaf("count"),
+              inner(Encloser(String), vec![leaf("this is a string!!!")])
             ]
           ),
-          Enclosed(
-            List,
+          inner(
+            Encloser(List),
             vec![
-              Leaf("first".to_string()),
-              Enclosed(
-                List,
+              leaf("first"),
+              inner(
+                Encloser(List),
                 vec![
-                  Leaf("keys".to_string()),
-                  Operated(
-                    Metadata,
+                  leaf("keys"),
+                  inner(
+                    Operator(Metadata),
                     vec![
-                      Leaf("my-metadata".to_string()),
-                      Enclosed(
-                        HashMap,
-                        vec![
-                          Leaf("1".to_string()),
-                          Leaf("2".to_string()),
-                          Leaf("3".to_string()),
-                          Leaf("4".to_string())
-                        ]
+                      leaf("my-metadata"),
+                      inner(
+                        Encloser(HashMap),
+                        vec![leaf("1"), leaf("2"), leaf("3"), leaf("4")]
                       )
                     ]
                   )
@@ -259,7 +257,7 @@ mod pseudo_clj_tests {
               )
             ]
           ),
-          Operated(Deref, vec![Leaf("my-atom".to_string()),])
+          inner(Operator(Deref), vec![leaf("my-atom"),])
         ]
       )))
     )

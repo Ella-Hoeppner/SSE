@@ -1,19 +1,32 @@
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::{Encloser, Operator};
+use crate::{syntax::EncloserOrOperator, Encloser, Operator};
 
-#[derive(Clone, PartialEq, Debug)]
-pub enum Sexp {
-  List(Vec<Sexp>),
-  Leaf(String),
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Sexp<
+  LeafData: Clone + PartialEq + Eq + Debug,
+  InnerData: Clone + PartialEq + Eq + Debug,
+> {
+  Leaf(LeafData, String),
+  Inner(InnerData, Vec<Sexp<LeafData, InnerData>>),
 }
 
-impl fmt::Display for Sexp {
+pub type RawSexp = Sexp<(), ()>;
+impl RawSexp {
+  pub fn leaf(s: String) -> Self {
+    Self::Leaf((), s)
+  }
+  pub fn inner(subexpressions: Vec<RawSexp>) -> Self {
+    Self::Inner((), subexpressions)
+  }
+}
+
+impl fmt::Display for RawSexp {
   fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self {
-      Sexp::Leaf(token) => fmt.write_str(token)?,
-      Sexp::List(sub_expressions) => {
+      Sexp::Leaf(_, token) => fmt.write_str(token)?,
+      Sexp::Inner(_, sub_expressions) => {
         fmt.write_str("(")?;
         let mut separator = "";
         for sexp in sub_expressions {
@@ -28,37 +41,20 @@ impl fmt::Display for Sexp {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TaggedSexp<E: Encloser, O: Operator> {
-  Leaf(String),
-  Enclosed(E, Vec<TaggedSexp<E, O>>),
-  Operated(O, Vec<TaggedSexp<E, O>>),
-}
+pub type SyntaxTree<E, O> = Sexp<(), EncloserOrOperator<E, O>>;
 
-impl<E: Encloser, O: Operator> From<TaggedSexp<E, O>> for Sexp {
-  fn from(tagged_sexp: TaggedSexp<E, O>) -> Self {
+impl<E: Encloser, O: Operator> From<SyntaxTree<E, O>> for RawSexp {
+  fn from(tagged_sexp: SyntaxTree<E, O>) -> Self {
     match tagged_sexp {
-      TaggedSexp::Leaf(leaf) => Sexp::Leaf(leaf),
-      TaggedSexp::Enclosed(encloser, sub_sexps) => Sexp::List({
+      SyntaxTree::Leaf((), leaf) => RawSexp::Leaf((), leaf),
+      SyntaxTree::Inner(encloser_or_opener, sub_sexps) => RawSexp::inner({
         let translated_sub_sexps =
           sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
-        let tag_str = encloser.id_str();
+        let tag_str = encloser_or_opener.id_str();
         if tag_str.is_empty() {
           translated_sub_sexps.collect()
         } else {
-          std::iter::once(Sexp::Leaf(tag_str.to_string()))
-            .chain(translated_sub_sexps)
-            .collect()
-        }
-      }),
-      TaggedSexp::Operated(operator, sub_sexps) => Sexp::List({
-        let translated_sub_sexps =
-          sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
-        let tag_str = operator.id_str();
-        if tag_str.is_empty() {
-          translated_sub_sexps.collect()
-        } else {
-          std::iter::once(Sexp::Leaf(tag_str.to_string()))
+          std::iter::once(RawSexp::leaf(tag_str.to_string()))
             .chain(translated_sub_sexps)
             .collect()
         }

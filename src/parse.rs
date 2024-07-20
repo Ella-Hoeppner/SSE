@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-  sexp::TaggedSexp,
+  sexp::SyntaxTree,
   syntax::{Encloser, EncloserOrOperator, Operator, SyntaxGraph},
 };
 
@@ -45,9 +45,9 @@ pub(crate) struct Parse<
   O: Operator,
 > {
   text: &'t str,
-  inherited_top_level_sexps: Vec<(TaggedSexp<E, O>, usize)>,
+  inherited_top_level_sexps: Vec<(SyntaxTree<E, O>, usize)>,
   syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
-  open_sexps: Vec<(EncloserOrOperator<E, O>, Vec<TaggedSexp<E, O>>)>,
+  open_sexps: Vec<(EncloserOrOperator<E, O>, Vec<SyntaxTree<E, O>>)>,
 }
 
 impl<
@@ -60,7 +60,7 @@ impl<
 {
   pub(crate) fn new(
     syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
-    inherited_top_level_sexps: Vec<(TaggedSexp<E, O>, usize)>,
+    inherited_top_level_sexps: Vec<(SyntaxTree<E, O>, usize)>,
     text: &'t str,
   ) -> Self {
     Self {
@@ -73,7 +73,7 @@ impl<
   fn consume_left_sexps(
     &mut self,
     operator: &O,
-  ) -> Result<Vec<TaggedSexp<E, O>>, ParseError> {
+  ) -> Result<Vec<SyntaxTree<E, O>>, ParseError> {
     let n = operator.left_args();
     if n == 0 {
       Ok(vec![])
@@ -104,24 +104,24 @@ impl<
       }
     }
   }
-  fn close_sexp(&mut self) -> Option<TaggedSexp<E, O>> {
+  fn close_sexp(&mut self) -> Option<SyntaxTree<E, O>> {
     let (encloser_or_operator, sub_sexps) = self
       .open_sexps
       .pop()
       .expect("called close_sexp with no open partial sexp");
     self.push_closed_sexp(match encloser_or_operator {
       EncloserOrOperator::Encloser(encloser) => {
-        TaggedSexp::Enclosed(encloser, sub_sexps)
+        SyntaxTree::Inner(EncloserOrOperator::Encloser(encloser), sub_sexps)
       }
       EncloserOrOperator::Operator(operator) => {
-        TaggedSexp::Operated(operator, sub_sexps)
+        SyntaxTree::Inner(EncloserOrOperator::Operator(operator), sub_sexps)
       }
     })
   }
   fn push_closed_sexp(
     &mut self,
-    sexp: TaggedSexp<E, O>,
-  ) -> Option<TaggedSexp<E, O>> {
+    sexp: SyntaxTree<E, O>,
+  ) -> Option<SyntaxTree<E, O>> {
     if let Some((encloser_or_operator, subsexps)) = self.open_sexps.last_mut() {
       subsexps.push(sexp);
       if let EncloserOrOperator::Operator(operator) = encloser_or_operator {
@@ -157,7 +157,7 @@ impl<
     mut self,
     already_parsed_index: usize,
   ) -> Result<
-    Result<Vec<(TaggedSexp<E, O>, usize)>, Vec<(TaggedSexp<E, O>, usize)>>,
+    Result<Vec<(SyntaxTree<E, O>, usize)>, Vec<(SyntaxTree<E, O>, usize)>>,
     ParseError,
   > {
     let beginning_index = self
@@ -187,7 +187,8 @@ impl<
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
             if let Some(completed_sexp) =
-              self.push_closed_sexp(TaggedSexp::Leaf(
+              self.push_closed_sexp(SyntaxTree::Leaf(
+                (),
                 self.text[terminal_beginning..character_index].to_string(),
               ))
             {

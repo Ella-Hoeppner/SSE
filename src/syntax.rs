@@ -1,12 +1,12 @@
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
-pub trait Encloser: Clone + Eq + Hash {
+pub trait Encloser: Debug + Clone + Eq + Hash {
   fn id_str(&self) -> &str;
   fn opening_encloser_str(&self) -> &str;
   fn closing_encloser_str(&self) -> &str;
 }
 
-pub trait Operator: Clone + Eq + Hash {
+pub trait Operator: Debug + Clone + Eq + Hash {
   fn id_str(&self) -> &str;
   fn left_args(&self) -> usize;
   fn right_args(&self) -> usize;
@@ -46,10 +46,18 @@ impl<'g, E: Encloser, O: Operator> SyntaxContext<E, O> {
   }
 }
 
-#[derive(Debug, Clone, Hash)]
-pub(crate) enum EncloserOrOperator<E: Encloser, O: Operator> {
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum EncloserOrOperator<E: Encloser, O: Operator> {
   Encloser(E),
   Operator(O),
+}
+impl<E: Encloser, O: Operator> EncloserOrOperator<E, O> {
+  pub fn id_str(&self) -> &str {
+    match self {
+      EncloserOrOperator::Encloser(encloser) => encloser.id_str(),
+      EncloserOrOperator::Operator(operator) => operator.id_str(),
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
