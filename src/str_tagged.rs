@@ -1,24 +1,26 @@
-use crate::syntax::{
-  Encloser, Operator, SyntaxContext, SyntaxGraph, SyntaxTag,
+use std::collections::HashMap;
+
+use crate::{
+  syntax::{Encloser, Operator, SyntaxGraph},
+  SyntaxContext,
 };
 
-impl SyntaxTag for &str {
-  fn tag_str(&self) -> &str {
-    self
-  }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StringTaggedEncloser<'g> {
+  id: &'g str,
   opener: &'g str,
   closer: &'g str,
 }
 impl<'g> StringTaggedEncloser<'g> {
-  pub fn new(opener: &'g str, closer: &'g str) -> Self {
-    Self { opener, closer }
+  pub fn new(id: &'g str, opener: &'g str, closer: &'g str) -> Self {
+    Self { id, opener, closer }
   }
 }
-impl<'g> Encloser<&'g str> for StringTaggedEncloser<'g> {
+impl<'g> Encloser for StringTaggedEncloser<'g> {
+  fn id_str(&self) -> &str {
+    self.id
+  }
+
   fn opening_encloser_str(&self) -> &'g str {
     self.opener
   }
@@ -28,22 +30,32 @@ impl<'g> Encloser<&'g str> for StringTaggedEncloser<'g> {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StringTaggedOperator<'g> {
+  id: &'g str,
   operator: &'g str,
   left_args: usize,
   right_args: usize,
 }
 impl<'g> StringTaggedOperator<'g> {
-  pub fn new(operator: &'g str, left_args: usize, right_args: usize) -> Self {
+  pub fn new(
+    id: &'g str,
+    operator: &'g str,
+    left_args: usize,
+    right_args: usize,
+  ) -> Self {
     Self {
+      id,
       operator,
       left_args,
       right_args,
     }
   }
 }
-impl<'g> Operator<&'g str> for StringTaggedOperator<'g> {
+impl<'g> Operator for StringTaggedOperator<'g> {
+  fn id_str(&self) -> &str {
+    self.id
+  }
   fn op_str(&self) -> &'g str {
     self.operator
   }
@@ -57,12 +69,8 @@ impl<'g> Operator<&'g str> for StringTaggedOperator<'g> {
   }
 }
 
-pub type StringTaggedSyntaxGraph<'g> = SyntaxGraph<
-  &'g str,
-  &'g str,
-  StringTaggedEncloser<'g>,
-  StringTaggedOperator<'g>,
->;
+pub type StringTaggedSyntaxGraph<'g> =
+  SyntaxGraph<&'g str, StringTaggedEncloser<'g>, StringTaggedOperator<'g>>;
 
 impl<'g> StringTaggedSyntaxGraph<'g> {
   pub fn from_descriptions(
@@ -71,6 +79,21 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
     encloser_descriptions: Vec<(&'g str, &'g str, &'g str, &'g str)>,
     operator_descriptions: Vec<(&'g str, &'g str, usize, usize, &'g str)>,
   ) -> Self {
+    let enclosers = encloser_descriptions
+      .into_iter()
+      .map(|(tag, opener, closer, context_tag)| {
+        (StringTaggedEncloser::new(tag, opener, closer), context_tag)
+      })
+      .collect::<HashMap<_, _>>();
+    let operators = operator_descriptions
+      .into_iter()
+      .map(|(tag, operator, left_args, right_args, context_tag)| {
+        (
+          StringTaggedOperator::new(tag, operator, left_args, right_args),
+          context_tag,
+        )
+      })
+      .collect::<HashMap<_, _>>();
     Self::new(
       root,
       context_descriptions
@@ -79,27 +102,36 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
           |(context_name, internal_tags, escape_char, whitespace_chars)| {
             (
               context_name,
-              SyntaxContext::new(internal_tags, escape_char, whitespace_chars),
+              SyntaxContext::new(
+                enclosers
+                  .keys()
+                  .filter_map(|encloser| {
+                    if internal_tags.contains(&encloser.id_str()) {
+                      Some(encloser.clone())
+                    } else {
+                      None
+                    }
+                  })
+                  .collect(),
+                operators
+                  .keys()
+                  .filter_map(|encloser| {
+                    if internal_tags.contains(&encloser.id_str()) {
+                      Some(encloser.clone())
+                    } else {
+                      None
+                    }
+                  })
+                  .collect(),
+                escape_char,
+                whitespace_chars,
+              ),
             )
           },
         )
         .collect(),
-      encloser_descriptions
-        .into_iter()
-        .map(|(tag, opener, closer, context_tag)| {
-          (tag, StringTaggedEncloser::new(opener, closer), context_tag)
-        })
-        .collect(),
-      operator_descriptions
-        .into_iter()
-        .map(|(tag, operator, left_args, right_args, context_tag)| {
-          (
-            tag,
-            StringTaggedOperator::new(operator, left_args, right_args),
-            context_tag,
-          )
-        })
-        .collect(),
+      enclosers,
+      operators,
     )
   }
   pub fn contextless_from_descriptions(

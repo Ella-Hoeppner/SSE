@@ -3,17 +3,16 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
-* try to get rid of the whole notion of `Tag` in the parser, and just have like `EncloserTag` and `OperatorTag`. I guess `TaggedSexp` could have two cases, like `Enclosed` or `Operated`. This seems much better from a typing perspective.
-* treating comments as sexps turns out to be a bit problematic - they get inserted as elements wherever they appear in the syntax tree, which is strange, and it also means they can take up space in operators, which is definitely a big problem
-  * Probably need special logic to account for this. Maybe allow certain tags (or context tags?) to be treated, from the outside, as whitespace??
-  * once this is solved, prove it works with a clj example
-* LSP
-* support turning a `Sexp` back into a `TaggedSexp` for a given `SyntaxGraph`
+* Maybe refactor `Sexp` to have a generic metadata param, to get rid of the need for `TaggedSexp`?
+* Track all positioning while parsing, including whitespace
+  * with this it should be possible to:
+    * losslessly reconstruct the original tree from a `TaggedSexp`
+    * identify, for a given line number and character position, where in the syntax tree it falls
 * pretty printing
-* Track all whitespace while parsing, such that the the original text can be losslessly recreated after parsing
-  * I think this can just be in `TaggedSexp`, doesn't need to be in `Sexp`? Though sometimes it might be nice to have in `Sexp`?
-    * Could just refactor things to have a single `Sexp` type that has generic parameters for metadata associated with each leaf, and each internal node. The current `Sexp` would just like having unit for the internal generic
-  * this will be helpful in the LSP for highlighting errors and stuff
+* have a flag to treat certain tags (or context tags?) as whitespace, from the outside
+  * this is necessary for comments, to make sure they don't get included in the syntax tree
+  * prove this works with a clj example with a comment
+* support turning a `Sexp` back into a `TaggedSexp` for a given `SyntaxGraph`
 * validate the coherence of syntax graph
   * things to validate:
     * no `ContextTag`s or `Tag`s should be duplicated

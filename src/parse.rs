@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
   sexp::TaggedSexp,
-  syntax::{Encloser, Operator, SyntaxElement, SyntaxGraph, SyntaxTag},
+  syntax::{Encloser, EncloserOrOperator, Operator, SyntaxGraph},
 };
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -40,29 +40,27 @@ impl Display for ParseError {
 pub(crate) struct Parse<
   't,
   'g,
-  Tag: SyntaxTag,
   ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-  E: Encloser<Tag>,
-  O: Operator<Tag>,
+  E: Encloser,
+  O: Operator,
 > {
   text: &'t str,
-  inherited_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
-  syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, O>,
-  open_sexps: Vec<(Tag, Vec<TaggedSexp<Tag>>)>,
+  inherited_top_level_sexps: Vec<(TaggedSexp<E, O>, usize)>,
+  syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
+  open_sexps: Vec<(EncloserOrOperator<E, O>, Vec<TaggedSexp<E, O>>)>,
 }
 
 impl<
     't,
     'g,
-    Tag: SyntaxTag,
     ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-    E: Encloser<Tag>,
-    O: Operator<Tag>,
-  > Parse<'t, 'g, Tag, ContextTag, E, O>
+    E: Encloser,
+    O: Operator,
+  > Parse<'t, 'g, ContextTag, E, O>
 {
   pub(crate) fn new(
-    syntax_graph: &'g SyntaxGraph<Tag, ContextTag, E, O>,
-    inherited_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
+    syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
+    inherited_top_level_sexps: Vec<(TaggedSexp<E, O>, usize)>,
     text: &'t str,
   ) -> Self {
     Self {
@@ -74,84 +72,83 @@ impl<
   }
   fn consume_left_sexps(
     &mut self,
-    tag: &Tag,
-  ) -> Result<Vec<TaggedSexp<Tag>>, ParseError> {
-    match self.syntax_graph.get_tag_element(tag) {
-      SyntaxElement::Operator(operator) => {
-        let n = operator.left_args();
-        if n == 0 {
-          Ok(vec![])
+    operator: &O,
+  ) -> Result<Vec<TaggedSexp<E, O>>, ParseError> {
+    let n = operator.left_args();
+    if n == 0 {
+      Ok(vec![])
+    } else {
+      if let Some((_, subsexps)) = self.open_sexps.last_mut() {
+        if subsexps.len() >= n {
+          Ok(subsexps.split_off(subsexps.len() - n))
         } else {
-          if let Some((_, subsexps)) = self.open_sexps.last_mut() {
-            if subsexps.len() >= n {
-              Ok(subsexps.split_off(subsexps.len() - n))
-            } else {
-              Err(ParseError::OperatorMissingLeftArgument(
-                operator.op_str().to_string(),
-              ))
-            }
-          } else {
-            if self.inherited_top_level_sexps.len() >= n {
-              Ok(
-                self
-                  .inherited_top_level_sexps
-                  .split_off(self.inherited_top_level_sexps.len() - n)
-                  .into_iter()
-                  .map(|(sexp, _)| sexp)
-                  .collect(),
-              )
-            } else {
-              Err(ParseError::OperatorMissingLeftArgument(
-                operator.op_str().to_string(),
-              ))
-            }
-          }
+          Err(ParseError::OperatorMissingLeftArgument(
+            operator.op_str().to_string(),
+          ))
+        }
+      } else {
+        if self.inherited_top_level_sexps.len() >= n {
+          Ok(
+            self
+              .inherited_top_level_sexps
+              .split_off(self.inherited_top_level_sexps.len() - n)
+              .into_iter()
+              .map(|(sexp, _)| sexp)
+              .collect(),
+          )
+        } else {
+          Err(ParseError::OperatorMissingLeftArgument(
+            operator.op_str().to_string(),
+          ))
         }
       }
-      _ => Ok(vec![]),
     }
   }
-  fn close_sexp(&mut self) -> Option<TaggedSexp<Tag>> {
-    let (tag, sub_sexps) = self
+  fn close_sexp(&mut self) -> Option<TaggedSexp<E, O>> {
+    let (encloser_or_operator, sub_sexps) = self
       .open_sexps
       .pop()
       .expect("called close_sexp with no open partial sexp");
-    let finished_sexp = TaggedSexp::List(tag, sub_sexps);
-    self.push_closed_sexp(finished_sexp)
+    self.push_closed_sexp(match encloser_or_operator {
+      EncloserOrOperator::Encloser(encloser) => {
+        TaggedSexp::Enclosed(encloser, sub_sexps)
+      }
+      EncloserOrOperator::Operator(operator) => {
+        TaggedSexp::Operated(operator, sub_sexps)
+      }
+    })
   }
   fn push_closed_sexp(
     &mut self,
-    sexp: TaggedSexp<Tag>,
-  ) -> Option<TaggedSexp<Tag>> {
-    if let Some((tag, subsexps)) = self.open_sexps.last_mut() {
+    sexp: TaggedSexp<E, O>,
+  ) -> Option<TaggedSexp<E, O>> {
+    if let Some((encloser_or_operator, subsexps)) = self.open_sexps.last_mut() {
       subsexps.push(sexp);
-      match self.syntax_graph.get_tag_element(tag) {
-        SyntaxElement::Operator(operator) => {
-          let left_args = operator.left_args();
-          let right_args = operator.right_args();
-          if subsexps.len() == left_args + right_args {
-            self.close_sexp()
-          } else {
-            None
-          }
+      if let EncloserOrOperator::Operator(operator) = encloser_or_operator {
+        let left_args = operator.left_args();
+        let right_args = operator.right_args();
+        if subsexps.len() == left_args + right_args {
+          self.close_sexp()
+        } else {
+          None
         }
-        _ => None,
+      } else {
+        None
       }
     } else {
       Some(sexp)
     }
   }
-  fn awaited_closer(&self) -> Option<&'g str> {
+  fn awaited_closer(&'g self) -> Option<&'g str> {
     self
       .open_sexps
       .iter()
       .rev()
-      .filter_map(|open_sexp| {
-        match self.syntax_graph.get_tag_element(&open_sexp.0) {
-          SyntaxElement::Encloser(encloser) => {
-            Some(encloser.closing_encloser_str())
-          }
-          _ => None,
+      .filter_map(|(encloser_or_operator, _)| {
+        if let EncloserOrOperator::Encloser(encloser) = encloser_or_operator {
+          Some(encloser.closing_encloser_str())
+        } else {
+          None
         }
       })
       .next()
@@ -160,7 +157,7 @@ impl<
     mut self,
     already_parsed_index: usize,
   ) -> Result<
-    Result<Vec<(TaggedSexp<Tag>, usize)>, Vec<(TaggedSexp<Tag>, usize)>>,
+    Result<Vec<(TaggedSexp<E, O>, usize)>, Vec<(TaggedSexp<E, O>, usize)>>,
     ParseError,
   > {
     let beginning_index = self
@@ -234,13 +231,12 @@ impl<
         if let Some(awaited_closer) = self.awaited_closer() {
           if remaining_text.starts_with(awaited_closer) {
             println!("matched awaited closer {:?}", self.awaited_closer());
+            let closer_len = awaited_closer.len();
             finish_terminal!();
 
-            let closer_len = awaited_closer.len();
-
-            if let Some((tag, _)) = self.open_sexps.last() {
-              if let SyntaxElement::Operator(operator) =
-                self.syntax_graph.get_tag_element(tag)
+            if let Some((encloser_or_operator, _)) = self.open_sexps.last() {
+              if let EncloserOrOperator::Operator(operator) =
+                encloser_or_operator
               {
                 return Err(ParseError::OperatorMissingRightArgument(
                   operator.op_str().to_string(),
@@ -251,7 +247,7 @@ impl<
             if let Some(completed_sexp) = self.close_sexp() {
               let mut top_level_sexps = self.inherited_top_level_sexps;
               top_level_sexps
-                .push((completed_sexp, character_index + awaited_closer.len()));
+                .push((completed_sexp, character_index + closer_len));
               return Ok(Ok(top_level_sexps));
             } else {
               skip_n_chars!(closer_len);
@@ -266,25 +262,45 @@ impl<
           .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root);
 
-        for tag in self.syntax_graph.get_context(active_context_tag).tags() {
-          let beginning_marker = self.syntax_graph.get_beginning_marker(tag);
+        for encloser in self
+          .syntax_graph
+          .get_context(active_context_tag)
+          .enclosers()
+        {
+          let beginning_marker = encloser.opening_encloser_str();
           if remaining_text.starts_with(beginning_marker) {
-            println!("matched beginning marker: {beginning_marker}");
             finish_terminal!();
-            let leftward_args = self.consume_left_sexps(tag)?;
-            self.open_sexps.push((tag.clone(), leftward_args));
+            self
+              .open_sexps
+              .push((EncloserOrOperator::Encloser(encloser.clone()), vec![]));
             skip_n_chars!(beginning_marker.len());
             continue 'outer;
           }
         }
 
-        for closer in
-          self.syntax_graph.get_asymmetric_closers(active_context_tag)
+        for operator in self
+          .syntax_graph
+          .get_context(active_context_tag)
+          .operators()
         {
+          let op_marker = operator.op_str();
+          if remaining_text.starts_with(op_marker) {
+            finish_terminal!();
+            let leftward_args = self.consume_left_sexps(operator)?;
+            self.open_sexps.push((
+              EncloserOrOperator::Operator(operator.clone()),
+              leftward_args,
+            ));
+            skip_n_chars!(op_marker.len());
+            continue 'outer;
+          }
+        }
+
+        for closer in self.syntax_graph.get_closers(active_context_tag) {
           if remaining_text.starts_with(closer) {
             println!(
               "matched unexpected closer!! {:?}",
-              self.syntax_graph.get_asymmetric_closers(active_context_tag)
+              self.syntax_graph.get_closers(active_context_tag)
             );
             return Err(ParseError::UnexpectedCloser(closer.to_string()));
           }
@@ -298,18 +314,17 @@ impl<
 
     match self.open_sexps.last() {
       None => Ok(Err(self.inherited_top_level_sexps)),
-      Some((tag, _)) => match self.syntax_graph.get_tag_element(tag) {
-        SyntaxElement::Encloser(encloser) => {
+      Some((encloser_or_operator, _)) => match encloser_or_operator {
+        EncloserOrOperator::Encloser(encloser) => {
           Err(ParseError::EndOfTextWithOpenEncloser(
             encloser.opening_encloser_str().to_string(),
           ))
         }
-        SyntaxElement::Operator(operator) => {
+        EncloserOrOperator::Operator(operator) => {
           Err(ParseError::OperatorMissingRightArgument(
             operator.op_str().to_string(),
           ))
         }
-        SyntaxElement::_Unusable(_) => unreachable!(),
       },
     }
   }

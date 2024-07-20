@@ -1,6 +1,4 @@
-use crate::{
-  syntax::SyntaxTag, Encloser, Operator, SyntaxContext, SyntaxGraph,
-};
+use crate::{Encloser, Operator, SyntaxContext, SyntaxGraph};
 use std::{fmt::Debug, hash::Hash};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -22,7 +20,20 @@ pub enum CljEncloser {
   LineComment,  // ;...\n
   BlockComment, // ;...\n
 }
-impl Encloser<CljSyntax> for CljEncloser {
+impl Encloser for CljEncloser {
+  fn id_str(&self) -> &str {
+    match self {
+      CljEncloser::List => "",
+      CljEncloser::Vector => "_VECTOR_",
+      CljEncloser::HashMap => "_HASHMAP_",
+      CljEncloser::HashSet => "_HASHSET_",
+      CljEncloser::FnLiteral => "_FN_LITERAL_",
+      CljEncloser::String => "_STRING_",
+      CljEncloser::Regex => "_REGEX_",
+      CljEncloser::LineComment => "_LINE_COMMENT_",
+      CljEncloser::BlockComment => "_BLOCK_COMMENT_",
+    }
+  }
   fn opening_encloser_str(&self) -> &str {
     match self {
       CljEncloser::List => "(",
@@ -46,7 +57,10 @@ impl Encloser<CljSyntax> for CljEncloser {
       CljEncloser::String => "\"",
       CljEncloser::Regex => "\"",
       CljEncloser::LineComment => "\n",
-      CljEncloser::BlockComment => "*/",
+      CljEncloser::BlockComment => {
+        "*/
+"
+      }
     }
   }
 }
@@ -61,7 +75,18 @@ pub enum CljOperator {
   Deref,         // @...
   FormComment,   // #_...
 }
-impl Operator<CljSyntax> for CljOperator {
+impl Operator for CljOperator {
+  fn id_str(&self) -> &str {
+    match self {
+      CljOperator::Metadata => "_METADATA_",
+      CljOperator::Quote => "_QUOTE_",
+      CljOperator::SyntaxQuote => "_SYNTAX_QUOTE_",
+      CljOperator::Unquote => "_UNQUOTE_",
+      CljOperator::UnquoteSplice => "_UNQUOTE_SPLICE_",
+      CljOperator::Deref => "_DEREF_",
+      CljOperator::FormComment => "_FORM_COMMENT_",
+    }
+  }
   fn left_args(&self) -> usize {
     0
   }
@@ -91,41 +116,7 @@ impl Operator<CljSyntax> for CljOperator {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum CljSyntax {
-  Encloser(CljEncloser),
-  Operator(CljOperator),
-}
-
-impl SyntaxTag for CljSyntax {
-  fn tag_str(&self) -> &str {
-    match self {
-      CljSyntax::Encloser(encloser) => match encloser {
-        CljEncloser::List => "",
-        CljEncloser::Vector => "_VECTOR_",
-        CljEncloser::HashMap => "_HASHMAP_",
-        CljEncloser::HashSet => "_HASHSET_",
-        CljEncloser::FnLiteral => "_FN_LITERAL_",
-        CljEncloser::String => "_STRING_",
-        CljEncloser::Regex => "_REGEX_",
-        CljEncloser::LineComment => "_LINE_COMMENT_",
-        CljEncloser::BlockComment => "_BLOCK_COMMENT_",
-      },
-      CljSyntax::Operator(operator) => match operator {
-        CljOperator::Metadata => "_METADATA_",
-        CljOperator::Quote => "_QUOTE_",
-        CljOperator::SyntaxQuote => "_SYNTAX_QUOTE_",
-        CljOperator::Unquote => "_UNQUOTE_",
-        CljOperator::UnquoteSplice => "_UNQUOTE_SPLICE_",
-        CljOperator::Deref => "_DEREF_",
-        CljOperator::FormComment => "_FORM_COMMENT_",
-      },
-    }
-  }
-}
-
-pub type CljSyntaxGraph =
-  SyntaxGraph<CljSyntax, CljContext, CljEncloser, CljOperator>;
+pub type CljSyntaxGraph = SyntaxGraph<CljContext, CljEncloser, CljOperator>;
 
 pub fn clj_graph() -> CljSyntaxGraph {
   CljSyntaxGraph::new(
@@ -135,22 +126,24 @@ pub fn clj_graph() -> CljSyntaxGraph {
         CljContext::Default,
         SyntaxContext::new(
           vec![
-            CljSyntax::Encloser(CljEncloser::List),
-            CljSyntax::Encloser(CljEncloser::Vector),
-            CljSyntax::Encloser(CljEncloser::HashMap),
-            CljSyntax::Encloser(CljEncloser::HashSet),
-            CljSyntax::Encloser(CljEncloser::FnLiteral),
-            CljSyntax::Encloser(CljEncloser::String),
-            CljSyntax::Encloser(CljEncloser::Regex),
-            CljSyntax::Encloser(CljEncloser::LineComment),
-            CljSyntax::Encloser(CljEncloser::BlockComment),
-            CljSyntax::Operator(CljOperator::Metadata),
-            CljSyntax::Operator(CljOperator::Quote),
-            CljSyntax::Operator(CljOperator::SyntaxQuote),
-            CljSyntax::Operator(CljOperator::Unquote),
-            CljSyntax::Operator(CljOperator::UnquoteSplice),
-            CljSyntax::Operator(CljOperator::Deref),
-            CljSyntax::Operator(CljOperator::FormComment),
+            CljEncloser::List,
+            CljEncloser::Vector,
+            CljEncloser::HashMap,
+            CljEncloser::HashSet,
+            CljEncloser::FnLiteral,
+            CljEncloser::String,
+            CljEncloser::Regex,
+            CljEncloser::LineComment,
+            CljEncloser::BlockComment,
+          ],
+          vec![
+            CljOperator::Metadata,
+            CljOperator::Quote,
+            CljOperator::SyntaxQuote,
+            CljOperator::Unquote,
+            CljOperator::UnquoteSplice,
+            CljOperator::Deref,
+            CljOperator::FormComment,
           ],
           None,
           vec![' ', '\t', '\n', '\r'],
@@ -158,108 +151,49 @@ pub fn clj_graph() -> CljSyntaxGraph {
       ),
       (
         CljContext::String,
-        SyntaxContext::new(vec![], Some('\\'), vec![]),
+        SyntaxContext::new(vec![], vec![], Some('\\'), vec![]),
       ),
       (
         CljContext::Comment,
-        SyntaxContext::new(vec![], None, vec![]),
+        SyntaxContext::new(vec![], vec![], None, vec![]),
       ),
     ]
     .into(),
-    vec![
-      (
-        CljSyntax::Encloser(CljEncloser::List),
-        CljEncloser::List,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::Vector),
-        CljEncloser::Vector,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::HashMap),
-        CljEncloser::HashMap,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::HashSet),
-        CljEncloser::HashSet,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::FnLiteral),
-        CljEncloser::FnLiteral,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::LineComment),
-        CljEncloser::LineComment,
-        CljContext::Comment,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::BlockComment),
-        CljEncloser::BlockComment,
-        CljContext::Comment,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::Regex),
-        CljEncloser::Regex,
-        CljContext::String,
-      ),
-      (
-        CljSyntax::Encloser(CljEncloser::String),
-        CljEncloser::String,
-        CljContext::String,
-      ),
-    ],
-    vec![
-      (
-        CljSyntax::Operator(CljOperator::Metadata),
-        CljOperator::Metadata,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Operator(CljOperator::Quote),
-        CljOperator::Quote,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Operator(CljOperator::SyntaxQuote),
-        CljOperator::SyntaxQuote,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Operator(CljOperator::Unquote),
-        CljOperator::Unquote,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Operator(CljOperator::UnquoteSplice),
-        CljOperator::UnquoteSplice,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Operator(CljOperator::Deref),
-        CljOperator::Deref,
-        CljContext::Default,
-      ),
-      (
-        CljSyntax::Operator(CljOperator::FormComment),
-        CljOperator::FormComment,
-        CljContext::Default,
-      ),
-    ],
+    [
+      (CljEncloser::List, CljContext::Default),
+      (CljEncloser::Vector, CljContext::Default),
+      (CljEncloser::HashMap, CljContext::Default),
+      (CljEncloser::HashSet, CljContext::Default),
+      (CljEncloser::FnLiteral, CljContext::Default),
+      (CljEncloser::LineComment, CljContext::Comment),
+      (CljEncloser::BlockComment, CljContext::Comment),
+      (CljEncloser::Regex, CljContext::String),
+      (CljEncloser::String, CljContext::String),
+    ]
+    .into_iter()
+    .collect(),
+    [
+      (CljOperator::Metadata, CljContext::Default),
+      (CljOperator::Quote, CljContext::Default),
+      (CljOperator::SyntaxQuote, CljContext::Default),
+      (CljOperator::Unquote, CljContext::Default),
+      (CljOperator::UnquoteSplice, CljContext::Default),
+      (CljOperator::Deref, CljContext::Default),
+      (CljOperator::FormComment, CljContext::Default),
+    ]
+    .into_iter()
+    .collect(),
   )
 }
 
 #[cfg(test)]
 mod pseudo_clj_tests {
   use crate::{
-    examples::psuedo_clj::{clj_graph, CljEncloser, CljOperator, CljSyntax},
+    examples::psuedo_clj::{clj_graph, CljEncloser, CljOperator},
     Parser, TaggedSexp,
   };
-  use CljSyntax::*;
+  use CljEncloser::*;
+  use CljOperator::*;
   use TaggedSexp::*;
 
   #[test]
@@ -273,16 +207,16 @@ mod pseudo_clj_tests {
             @my-atom)"
       )
       .read_next_tagged_sexp(),
-      Ok(Some(List(
-        Encloser(CljEncloser::List),
+      Ok(Some(Enclosed(
+        List,
         vec![
           Leaf("+".to_string()),
-          List(
-            Encloser(CljEncloser::List),
+          Enclosed(
+            List,
             vec![
               Leaf("second".to_string()),
-              List(
-                Encloser(CljEncloser::Vector),
+              Enclosed(
+                Vector,
                 vec![
                   Leaf("1".to_string()),
                   Leaf("2".to_string()),
@@ -291,30 +225,27 @@ mod pseudo_clj_tests {
               )
             ]
           ),
-          List(
-            Encloser(CljEncloser::List),
+          Enclosed(
+            List,
             vec![
               Leaf("count".to_string()),
-              List(
-                Encloser(CljEncloser::String),
-                vec![Leaf("this is a string!!!".to_string())]
-              )
+              Enclosed(String, vec![Leaf("this is a string!!!".to_string())])
             ]
           ),
-          List(
-            Encloser(CljEncloser::List),
+          Enclosed(
+            List,
             vec![
               Leaf("first".to_string()),
-              List(
-                Encloser(CljEncloser::List),
+              Enclosed(
+                List,
                 vec![
                   Leaf("keys".to_string()),
-                  List(
-                    Operator(CljOperator::Metadata),
+                  Operated(
+                    Metadata,
                     vec![
                       Leaf("my-metadata".to_string()),
-                      List(
-                        Encloser(CljEncloser::HashMap),
+                      Enclosed(
+                        HashMap,
                         vec![
                           Leaf("1".to_string()),
                           Leaf("2".to_string()),
@@ -328,10 +259,7 @@ mod pseudo_clj_tests {
               )
             ]
           ),
-          List(
-            Operator(CljOperator::Deref),
-            vec![Leaf("my-atom".to_string()),]
-          )
+          Operated(Deref, vec![Leaf("my-atom".to_string()),])
         ]
       )))
     )

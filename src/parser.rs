@@ -1,50 +1,41 @@
 use crate::{
-  parse::Parse,
-  syntax::{SyntaxElement, SyntaxTag},
-  Encloser, Operator, ParseError, Sexp, SyntaxGraph, TaggedSexp,
+  parse::Parse, syntax::EncloserOrOperator, Encloser, Operator, ParseError,
+  Sexp, SyntaxGraph, TaggedSexp,
 };
 use std::{fmt::Debug, hash::Hash};
 
 #[derive(Debug, Clone)]
 pub struct Parser<
   't,
-  Tag: SyntaxTag,
   ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-  E: Encloser<Tag>,
-  O: Operator<Tag>,
+  E: Encloser,
+  O: Operator,
 > {
   text: &'t str,
-  syntax_graph: SyntaxGraph<Tag, ContextTag, E, O>,
-  parsed_top_level_sexps: Vec<(TaggedSexp<Tag>, usize)>,
+  syntax_graph: SyntaxGraph<ContextTag, E, O>,
+  parsed_top_level_sexps: Vec<(TaggedSexp<E, O>, usize)>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
 }
 
 impl<
     't,
-    Tag: SyntaxTag,
     ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-    E: Encloser<Tag>,
-    O: Operator<Tag>,
-  > Parser<'t, Tag, ContextTag, E, O>
+    E: Encloser,
+    O: Operator,
+  > Parser<'t, ContextTag, E, O>
 {
   pub fn new(
-    syntax_graph: SyntaxGraph<Tag, ContextTag, E, O>,
+    syntax_graph: SyntaxGraph<ContextTag, E, O>,
     text: &'t str,
   ) -> Self {
     Self {
       text,
       top_level_lookahead: syntax_graph
         .get_context(&syntax_graph.root)
-        .tags()
+        .operators()
         .iter()
-        .map(|tag| {
-          let x = syntax_graph.get_tag_element(tag);
-          match x {
-            SyntaxElement::Operator(operator) => operator.left_args(),
-            _ => 0,
-          }
-        })
+        .map(|operator| operator.left_args())
         .max()
         .unwrap_or(0),
       syntax_graph,
@@ -54,14 +45,14 @@ impl<
   }
   pub fn replace_syntax_graph(
     &mut self,
-    new_syntax_graph: SyntaxGraph<Tag, ContextTag, E, O>,
+    new_syntax_graph: SyntaxGraph<ContextTag, E, O>,
   ) {
     self.syntax_graph = new_syntax_graph;
     self.parsed_top_level_sexps.clear();
   }
   pub fn read_next_tagged_sexp(
     &mut self,
-  ) -> Result<Option<TaggedSexp<Tag>>, ParseError> {
+  ) -> Result<Option<TaggedSexp<E, O>>, ParseError> {
     while self.parsed_top_level_sexps.len() <= self.top_level_lookahead {
       let mut stolen_top_level_sexps = vec![];
       std::mem::swap(
@@ -96,7 +87,7 @@ impl<
   }
   pub fn read_all_tagged_sexps(
     &mut self,
-  ) -> Vec<Result<TaggedSexp<Tag>, ParseError>> {
+  ) -> Vec<Result<TaggedSexp<E, O>, ParseError>> {
     let mut results = vec![];
     loop {
       match self.read_next_tagged_sexp() {
