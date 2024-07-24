@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::{
-  sexp::SyntaxTree,
   syntax::{Encloser, EncloserOrOperator, Operator, SyntaxGraph},
+  DocumentSyntaxTree,
 };
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -45,9 +45,13 @@ pub(crate) struct Parse<
   O: Operator,
 > {
   text: &'t str,
-  inherited_top_level_sexps: Vec<(SyntaxTree<E, O>, usize)>,
+  inherited_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
   syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
-  open_sexps: Vec<(EncloserOrOperator<E, O>, Vec<SyntaxTree<E, O>>)>,
+  open_sexps: Vec<(
+    usize,
+    EncloserOrOperator<E, O>,
+    Vec<DocumentSyntaxTree<E, O>>,
+  )>,
 }
 
 impl<
@@ -60,7 +64,7 @@ impl<
 {
   pub(crate) fn new(
     syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
-    inherited_top_level_sexps: Vec<(SyntaxTree<E, O>, usize)>,
+    inherited_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
     text: &'t str,
   ) -> Self {
     Self {
@@ -73,12 +77,12 @@ impl<
   fn consume_left_sexps(
     &mut self,
     operator: &O,
-  ) -> Result<Vec<SyntaxTree<E, O>>, ParseError> {
+  ) -> Result<Vec<DocumentSyntaxTree<E, O>>, ParseError> {
     let n = operator.left_args();
     if n == 0 {
       Ok(vec![])
     } else {
-      if let Some((_, subsexps)) = self.open_sexps.last_mut() {
+      if let Some((_, _, subsexps)) = self.open_sexps.last_mut() {
         if subsexps.len() >= n {
           Ok(subsexps.split_off(subsexps.len() - n))
         } else {
@@ -91,10 +95,7 @@ impl<
           Ok(
             self
               .inherited_top_level_sexps
-              .split_off(self.inherited_top_level_sexps.len() - n)
-              .into_iter()
-              .map(|(sexp, _)| sexp)
-              .collect(),
+              .split_off(self.inherited_top_level_sexps.len() - n),
           )
         } else {
           Err(ParseError::OperatorMissingLeftArgument(
@@ -104,31 +105,45 @@ impl<
       }
     }
   }
-  fn close_sexp(&mut self) -> Option<SyntaxTree<E, O>> {
-    let (encloser_or_operator, sub_sexps) = self
+  fn close_sexp(
+    &mut self,
+    closing_index: usize,
+  ) -> Option<DocumentSyntaxTree<E, O>> {
+    let (opening_index, encloser_or_operator, sub_sexps) = self
       .open_sexps
       .pop()
       .expect("called close_sexp with no open partial sexp");
     self.push_closed_sexp(match encloser_or_operator {
-      EncloserOrOperator::Encloser(encloser) => {
-        SyntaxTree::Inner(EncloserOrOperator::Encloser(encloser), sub_sexps)
-      }
-      EncloserOrOperator::Operator(operator) => {
-        SyntaxTree::Inner(EncloserOrOperator::Operator(operator), sub_sexps)
-      }
+      EncloserOrOperator::Encloser(encloser) => DocumentSyntaxTree::Inner(
+        (
+          opening_index..closing_index,
+          EncloserOrOperator::Encloser(encloser),
+        ),
+        sub_sexps,
+      ),
+      EncloserOrOperator::Operator(operator) => DocumentSyntaxTree::Inner(
+        (
+          opening_index..closing_index,
+          EncloserOrOperator::Operator(operator),
+        ),
+        sub_sexps,
+      ),
     })
   }
   fn push_closed_sexp(
     &mut self,
-    sexp: SyntaxTree<E, O>,
-  ) -> Option<SyntaxTree<E, O>> {
-    if let Some((encloser_or_operator, subsexps)) = self.open_sexps.last_mut() {
+    sexp: DocumentSyntaxTree<E, O>,
+  ) -> Option<DocumentSyntaxTree<E, O>> {
+    if let Some((_, encloser_or_operator, subsexps)) =
+      self.open_sexps.last_mut()
+    {
+      let end = sexp.range().end;
       subsexps.push(sexp);
       if let EncloserOrOperator::Operator(operator) = encloser_or_operator {
         let left_args = operator.left_args();
         let right_args = operator.right_args();
         if subsexps.len() == left_args + right_args {
-          self.close_sexp()
+          self.close_sexp(end)
         } else {
           None
         }
@@ -144,7 +159,7 @@ impl<
       .open_sexps
       .iter()
       .rev()
-      .filter_map(|(encloser_or_operator, _)| {
+      .filter_map(|(_, encloser_or_operator, _)| {
         if let EncloserOrOperator::Encloser(encloser) = encloser_or_operator {
           Some(encloser.closing_encloser_str())
         } else {
@@ -157,13 +172,13 @@ impl<
     mut self,
     already_parsed_index: usize,
   ) -> Result<
-    Result<Vec<(SyntaxTree<E, O>, usize)>, Vec<(SyntaxTree<E, O>, usize)>>,
+    Result<Vec<DocumentSyntaxTree<E, O>>, Vec<DocumentSyntaxTree<E, O>>>,
     ParseError,
   > {
     let beginning_index = self
       .inherited_top_level_sexps
       .last()
-      .map(|(_, end_index)| *end_index)
+      .map(|syntax_tree| syntax_tree.range().end)
       .unwrap_or(already_parsed_index);
     if beginning_index >= self.text.len() {
       return Ok(Err(self.inherited_top_level_sexps));
@@ -174,6 +189,14 @@ impl<
       .chain(std::iter::once((self.text.len() - beginning_index, ' ')))
       .peekable();
 
+    println!(
+      "{}",
+      indexed_characters
+        .clone()
+        .fold(String::new() + "STARTING:\n", |acc, (i, c)| acc
+          + &format!("{i}: {c}\n"))
+    );
+
     let mut current_terminal_beginning: Option<usize> = None;
     let mut escaped = false;
 
@@ -181,19 +204,19 @@ impl<
       indexed_characters.next()
     {
       let character_index = beginning_index + character_index_offset;
-      println!("\n{character_index}: {character}");
+      println!("\n{character_index_offset} {character_index}: {character}");
 
       macro_rules! finish_terminal {
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
             if let Some(completed_sexp) =
-              self.push_closed_sexp(SyntaxTree::Leaf(
-                (),
+              self.push_closed_sexp(DocumentSyntaxTree::Leaf(
+                terminal_beginning..character_index,
                 self.text[terminal_beginning..character_index].to_string(),
               ))
             {
               let mut top_level_sexps = self.inherited_top_level_sexps;
-              top_level_sexps.push((completed_sexp, character_index));
+              top_level_sexps.push(completed_sexp);
               return Ok(Ok(top_level_sexps));
             }
             current_terminal_beginning = None;
@@ -202,6 +225,7 @@ impl<
       }
       macro_rules! skip_n_chars {
         ($n:expr) => {
+          println!("skipping {} chars", $n);
           if $n > 1 {
             indexed_characters.nth($n - 2);
           }
@@ -212,7 +236,7 @@ impl<
         self
           .open_sexps
           .last()
-          .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
+          .map(|(_, tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root),
       );
       //println!("active_context: {active_context:?}");
@@ -235,7 +259,7 @@ impl<
             let closer_len = awaited_closer.len();
             finish_terminal!();
 
-            if let Some((encloser_or_operator, _)) = self.open_sexps.last() {
+            if let Some((_, encloser_or_operator, _)) = self.open_sexps.last() {
               if let EncloserOrOperator::Operator(operator) =
                 encloser_or_operator
               {
@@ -245,10 +269,9 @@ impl<
               }
             }
 
-            if let Some(completed_sexp) = self.close_sexp() {
+            if let Some(completed_sexp) = self.close_sexp(character_index + 1) {
               let mut top_level_sexps = self.inherited_top_level_sexps;
-              top_level_sexps
-                .push((completed_sexp, character_index + closer_len));
+              top_level_sexps.push(completed_sexp);
               return Ok(Ok(top_level_sexps));
             } else {
               skip_n_chars!(closer_len);
@@ -260,7 +283,7 @@ impl<
         let active_context_tag = self
           .open_sexps
           .last()
-          .map(|(tag, _)| self.syntax_graph.get_context_tag(tag))
+          .map(|(_, tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root);
 
         for encloser in self
@@ -271,9 +294,11 @@ impl<
           let beginning_marker = encloser.opening_encloser_str();
           if remaining_text.starts_with(beginning_marker) {
             finish_terminal!();
-            self
-              .open_sexps
-              .push((EncloserOrOperator::Encloser(encloser.clone()), vec![]));
+            self.open_sexps.push((
+              character_index,
+              EncloserOrOperator::Encloser(encloser.clone()),
+              vec![],
+            ));
             skip_n_chars!(beginning_marker.len());
             continue 'outer;
           }
@@ -289,6 +314,7 @@ impl<
             finish_terminal!();
             let leftward_args = self.consume_left_sexps(operator)?;
             self.open_sexps.push((
+              character_index,
               EncloserOrOperator::Operator(operator.clone()),
               leftward_args,
             ));
@@ -315,7 +341,7 @@ impl<
 
     match self.open_sexps.last() {
       None => Ok(Err(self.inherited_top_level_sexps)),
-      Some((encloser_or_operator, _)) => match encloser_or_operator {
+      Some((_, encloser_or_operator, _)) => match encloser_or_operator {
         EncloserOrOperator::Encloser(encloser) => {
           Err(ParseError::EndOfTextWithOpenEncloser(
             encloser.opening_encloser_str().to_string(),

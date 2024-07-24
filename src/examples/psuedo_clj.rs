@@ -212,11 +212,12 @@ mod pseudo_clj_tests {
       Parser::new(
         clj_graph(),
         "(+ (second [1 2 3])
-            (count \"this is a string!!!\")
-            (first (keys ^my-metadata {1 2 3 4}))
-            @my-atom)"
+          (count \"this is a string!!!\")
+          (first (keys ^my-metadata {1 2 3 4}))
+          @my-atom)"
       )
-      .read_next_tagged_sexp(),
+      .read_next()
+      .map(|maybe_tree| maybe_tree.map(SyntaxTree::from)),
       Ok(Some(inner(
         Encloser(List),
         vec![
