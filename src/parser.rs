@@ -1,6 +1,6 @@
 use crate::{
-  parse::Parse, sexp::RawSexp, Encloser, Operator, ParseError, Sexp,
-  SyntaxGraph, SyntaxTree,
+  parse::Parse, DocumentSyntaxTree, Encloser, Operator, ParseError, RawSexp,
+  SyntaxGraph,
 };
 use std::{fmt::Debug, hash::Hash};
 
@@ -13,7 +13,7 @@ pub struct Parser<
 > {
   text: &'t str,
   syntax_graph: SyntaxGraph<ContextTag, E, O>,
-  parsed_top_level_sexps: Vec<(SyntaxTree<E, O>, usize)>,
+  parsed_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
 }
@@ -50,9 +50,9 @@ impl<
     self.syntax_graph = new_syntax_graph;
     self.parsed_top_level_sexps.clear();
   }
-  pub fn read_next_tagged_sexp(
+  pub fn read_next(
     &mut self,
-  ) -> Result<Option<SyntaxTree<E, O>>, ParseError> {
+  ) -> Result<Option<DocumentSyntaxTree<E, O>>, ParseError> {
     while self.parsed_top_level_sexps.len() <= self.top_level_lookahead {
       let mut stolen_top_level_sexps = vec![];
       std::mem::swap(
@@ -71,26 +71,19 @@ impl<
         }
       }
     }
-    Ok(
-      if let Some((sexp, end_index)) = self.parsed_top_level_sexps.pop() {
-        self.already_parsed_index = end_index;
-        Some(sexp)
-      } else {
-        None
-      },
-    )
-  }
-  pub fn read_next_sexp(&mut self) -> Result<Option<RawSexp>, ParseError> {
-    self.read_next_tagged_sexp().map(|maybe_tagged_sexp| {
-      maybe_tagged_sexp.map(|tagged_sexp| tagged_sexp.into())
+    Ok(if let Some(sexp) = self.parsed_top_level_sexps.pop() {
+      self.already_parsed_index = sexp.range().end;
+      Some(sexp)
+    } else {
+      None
     })
   }
-  pub fn read_all_tagged_sexps(
+  pub fn read_all(
     &mut self,
-  ) -> Vec<Result<SyntaxTree<E, O>, ParseError>> {
+  ) -> Vec<Result<DocumentSyntaxTree<E, O>, ParseError>> {
     let mut results = vec![];
     loop {
-      match self.read_next_tagged_sexp() {
+      match self.read_next() {
         Ok(None) => break,
         Ok(Some(tagged_sexp)) => results.push(Ok(tagged_sexp)),
         Err(err) => {
@@ -101,9 +94,14 @@ impl<
     }
     results
   }
+  pub fn read_next_sexp(&mut self) -> Result<Option<RawSexp>, ParseError> {
+    self.read_next().map(|maybe_tagged_sexp| {
+      maybe_tagged_sexp.map(|tagged_sexp| tagged_sexp.into())
+    })
+  }
   pub fn read_all_sexps(&mut self) -> Vec<Result<RawSexp, ParseError>> {
     self
-      .read_all_tagged_sexps()
+      .read_all()
       .into_iter()
       .map(|result| result.map(|tagged_sexp| tagged_sexp.into()))
       .collect()

@@ -7,6 +7,8 @@ pub mod syntax;
 
 pub use parse::ParseError;
 pub use parser::Parser;
+pub use sexp::DocumentSyntaxTree;
+pub use sexp::RawSexp;
 pub use sexp::Sexp;
 pub use sexp::SyntaxTree;
 pub use syntax::Encloser;
@@ -18,7 +20,6 @@ pub use syntax::SyntaxGraph;
 mod core_tests {
   use crate::{
     sexp::RawSexp, str_tagged::StringTaggedSyntaxGraph, ParseError, Parser,
-    Sexp::*,
   };
 
   fn leaf(s: String) -> RawSexp {
@@ -246,7 +247,7 @@ mod core_tests {
   }
 
   #[test]
-  fn infix_op_in_list() {
+  fn solo_infix_op_in_list() {
     assert_eq!(
       Parser::new(plus_sexp_graph(), "(1+2)").read_next_sexp(),
       Ok(Some(inner(vec![inner(vec![
