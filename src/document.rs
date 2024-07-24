@@ -1,6 +1,9 @@
 use std::{fmt::Debug, hash::Hash, ops::Range};
 
-use crate::{DocumentSyntaxTree, Encloser, Operator, ParseError, Parser};
+use crate::{
+  ast::InvalidTreePath, DocumentSyntaxTree, Encloser, Operator, ParseError,
+  Parser,
+};
 
 pub struct Document<E: Encloser, O: Operator> {
   syntax_trees: Vec<DocumentSyntaxTree<E, O>>,
@@ -26,6 +29,22 @@ impl<
 }
 
 impl<E: Encloser, O: Operator> Document<E, O> {
+  pub fn get_subtree(
+    &self,
+    path: &[usize],
+  ) -> Result<&DocumentSyntaxTree<E, O>, InvalidTreePath> {
+    let mut path_iter = path.iter().copied();
+    if let Some(top_level_tree_index) = path_iter.next() {
+      if let Some(top_level_tree) = self.syntax_trees.get(top_level_tree_index)
+      {
+        top_level_tree.get_subtree_inner(path_iter)
+      } else {
+        Err(InvalidTreePath)
+      }
+    } else {
+      Err(InvalidTreePath)
+    }
+  }
   pub fn innermost_predicate_path(
     &self,
     predicate: &impl Fn(&DocumentSyntaxTree<E, O>) -> bool,
@@ -50,5 +69,11 @@ impl<E: Encloser, O: Operator> Document<E, O> {
     selection: &Range<usize>,
   ) -> Vec<usize> {
     self.innermost_predicate_path(&|tree| tree.encloses_selection(selection))
+  }
+  pub fn outermost_enclosed_by_path(
+    &self,
+    selection: &Range<usize>,
+  ) -> Vec<usize> {
+    todo!()
   }
 }

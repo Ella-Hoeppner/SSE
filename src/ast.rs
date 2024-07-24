@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::iter::Peekable;
 use std::{fmt, ops::Range};
 
 use crate::{syntax::EncloserOrOperator, Encloser, Operator};
@@ -10,6 +11,38 @@ pub enum Sexp<
 > {
   Leaf(LeafData, String),
   Inner(InnerData, Vec<Sexp<LeafData, InnerData>>),
+}
+
+#[derive(Debug)]
+pub struct InvalidTreePath;
+
+impl<
+    LeafData: Clone + PartialEq + Eq + Debug,
+    InnerData: Clone + PartialEq + Eq + Debug,
+  > Sexp<LeafData, InnerData>
+{
+  pub(crate) fn get_subtree_inner(
+    &self,
+    mut path: impl Iterator<Item = usize>,
+  ) -> Result<&Self, InvalidTreePath> {
+    if let Some(child_index) = path.next() {
+      match self {
+        Sexp::Leaf(_, _) => Err(InvalidTreePath),
+        Sexp::Inner(_, children) => {
+          if let Some(child) = children.get(child_index) {
+            child.get_subtree_inner(path)
+          } else {
+            Err(InvalidTreePath)
+          }
+        }
+      }
+    } else {
+      Ok(self)
+    }
+  }
+  pub fn get_subtree(&self, path: &[usize]) -> Result<&Self, InvalidTreePath> {
+    self.get_subtree_inner(path.iter().copied())
+  }
 }
 
 pub type RawSexp = Sexp<(), ()>;
