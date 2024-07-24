@@ -19,7 +19,12 @@ pub use syntax::SyntaxGraph;
 #[cfg(test)]
 mod core_tests {
   use crate::{
-    sexp::RawSexp, str_tagged::StringTaggedSyntaxGraph, ParseError, Parser,
+    sexp::RawSexp,
+    str_tagged::{
+      StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
+    },
+    syntax::EncloserOrOperator,
+    DocumentSyntaxTree, ParseError, Parser,
   };
 
   fn leaf(s: String) -> RawSexp {
@@ -550,6 +555,120 @@ mod core_tests {
         leaf("STRING".to_string()),
         leaf("\\\"".to_string()),
       ])))
+    );
+  }
+
+  #[test]
+  fn solo_sexp_char_indeces() {
+    assert_eq!(
+      Parser::new(sexp_graph(), "(+ 1 2)").read_next(),
+      Ok(Some(DocumentSyntaxTree::Inner(
+        (
+          0..7,
+          EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
+        ),
+        vec![
+          DocumentSyntaxTree::Leaf(1..2, "+".to_string()),
+          DocumentSyntaxTree::Leaf(3..4, "1".to_string()),
+          DocumentSyntaxTree::Leaf(5..6, "2".to_string())
+        ]
+      )))
+    )
+  }
+
+  #[test]
+  fn nested_sexp_char_indeces() {
+    assert_eq!(
+      Parser::new(sexp_graph(), "(* (+ 1 2) 3)").read_next(),
+      Ok(Some(DocumentSyntaxTree::Inner(
+        (
+          0..13,
+          EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
+        ),
+        vec![
+          DocumentSyntaxTree::Leaf(1..2, "*".to_string()),
+          DocumentSyntaxTree::Inner(
+            (
+              3..10,
+              EncloserOrOperator::Encloser(StringTaggedEncloser::new(
+                "", "(", ")"
+              ))
+            ),
+            vec![
+              DocumentSyntaxTree::Leaf(4..5, "+".to_string()),
+              DocumentSyntaxTree::Leaf(6..7, "1".to_string()),
+              DocumentSyntaxTree::Leaf(8..9, "2".to_string())
+            ]
+          ),
+          DocumentSyntaxTree::Leaf(11..12, "3".to_string()),
+        ]
+      )))
+    )
+  }
+
+  #[test]
+  fn multi_bracket_sexp_char_indeces() {
+    assert_eq!(
+      Parser::new(multi_bracket_graph(), "(union #{1 20} #{})").read_next(),
+      Ok(Some(DocumentSyntaxTree::Inner(
+        (
+          0..19,
+          EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
+        ),
+        vec![
+          DocumentSyntaxTree::Leaf(1..6, "union".to_string()),
+          DocumentSyntaxTree::Inner(
+            (
+              7..14,
+              EncloserOrOperator::Encloser(StringTaggedEncloser::new(
+                ":HASH_CURLY",
+                "#{",
+                "}"
+              ))
+            ),
+            vec![
+              DocumentSyntaxTree::Leaf(9..10, "1".to_string()),
+              DocumentSyntaxTree::Leaf(11..13, "20".to_string())
+            ]
+          ),
+          DocumentSyntaxTree::Inner(
+            (
+              15..18,
+              EncloserOrOperator::Encloser(StringTaggedEncloser::new(
+                ":HASH_CURLY",
+                "#{",
+                "}"
+              ))
+            ),
+            vec![]
+          ),
+        ]
+      )))
+    )
+  }
+
+  #[test]
+  fn infix_char_indeces() {
+    assert_eq!(
+      Parser::new(plus_sexp_graph(), "(1+2)").read_next(),
+      Ok(Some(DocumentSyntaxTree::Inner(
+        (
+          0..5,
+          EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
+        ),
+        vec![DocumentSyntaxTree::Inner(
+          (
+            1..4,
+            EncloserOrOperator::Operator(StringTaggedOperator::new(
+              "PLUS", "+", 1, 1
+            ))
+          ),
+          vec![
+            DocumentSyntaxTree::Leaf(1..2, "1".to_string()),
+            DocumentSyntaxTree::Leaf(3..4, "2".to_string())
+          ]
+        ),]
+      )))
     );
   }
 }

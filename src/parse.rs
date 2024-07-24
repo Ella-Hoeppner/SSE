@@ -189,14 +189,6 @@ impl<
       .chain(std::iter::once((self.text.len() - beginning_index, ' ')))
       .peekable();
 
-    println!(
-      "{}",
-      indexed_characters
-        .clone()
-        .fold(String::new() + "STARTING:\n", |acc, (i, c)| acc
-          + &format!("{i}: {c}\n"))
-    );
-
     let mut current_terminal_beginning: Option<usize> = None;
     let mut escaped = false;
 
@@ -204,7 +196,7 @@ impl<
       indexed_characters.next()
     {
       let character_index = beginning_index + character_index_offset;
-      println!("\n{character_index_offset} {character_index}: {character}");
+      //println!("\n{character_index_offset} {character_index}: {character}");
 
       macro_rules! finish_terminal {
         () => {
@@ -225,7 +217,7 @@ impl<
       }
       macro_rules! skip_n_chars {
         ($n:expr) => {
-          println!("skipping {} chars", $n);
+          //println!("skipping {} chars", $n);
           if $n > 1 {
             indexed_characters.nth($n - 2);
           }
@@ -255,7 +247,7 @@ impl<
         //println!("awaiting closer: {:?}", self.awaited_closer());
         if let Some(awaited_closer) = self.awaited_closer() {
           if remaining_text.starts_with(awaited_closer) {
-            println!("matched awaited closer {:?}", self.awaited_closer());
+            //println!("matched awaited closer {:?}", self.awaited_closer());
             let closer_len = awaited_closer.len();
             finish_terminal!();
 
@@ -314,7 +306,10 @@ impl<
             finish_terminal!();
             let leftward_args = self.consume_left_sexps(operator)?;
             self.open_sexps.push((
-              character_index,
+              leftward_args
+                .first()
+                .map(|first_arg| first_arg.range().start)
+                .unwrap_or(character_index),
               EncloserOrOperator::Operator(operator.clone()),
               leftward_args,
             ));
@@ -325,10 +320,10 @@ impl<
 
         for closer in self.syntax_graph.get_closers(active_context_tag) {
           if remaining_text.starts_with(closer) {
-            println!(
+            /*println!(
               "matched unexpected closer!! {:?}",
               self.syntax_graph.get_closers(active_context_tag)
-            );
+            );*/
             return Err(ParseError::UnexpectedCloser(closer.to_string()));
           }
         }
