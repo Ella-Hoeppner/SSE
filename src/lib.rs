@@ -674,6 +674,69 @@ mod core_tests {
   }
 
   #[test]
+  fn sexp_document_subtree() {
+    let doc: Document<_, _> = Parser::new(sexp_graph(), "(* (+ 1 2) 3)")
+      .try_into()
+      .unwrap();
+    assert_eq!(
+      doc.get_subtree(&[0]).unwrap().clone(),
+      Parser::new(sexp_graph(), "(* (+ 1 2) 3)")
+        .read_next()
+        .unwrap()
+        .unwrap()
+    );
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0, 0]).unwrap().clone()),
+      Parser::new(sexp_graph(), "*")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0, 1]).unwrap().clone()),
+      Parser::new(sexp_graph(), "(+ 1 2)")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+  }
+
+  #[test]
+  fn infix_sexp_document_subtree() {
+    let doc: Document<_, _> = Parser::new(plus_sexp_graph(), "(inc 1 + 2)")
+      .try_into()
+      .unwrap();
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0, 0]).unwrap().clone()),
+      Parser::new(plus_sexp_graph(), "inc")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0, 1]).unwrap().clone()),
+      Parser::new(plus_sexp_graph(), "1 + 2")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0, 1, 0]).unwrap().clone()),
+      Parser::new(plus_sexp_graph(), "1")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0, 1, 1]).unwrap().clone()),
+      Parser::new(plus_sexp_graph(), "2")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+  }
+
+  #[test]
   fn sexp_document_enclosing_paths() {
     let doc: Document<_, _> = Parser::new(sexp_graph(), "(* (+ 1 2) 3)")
       .try_into()
