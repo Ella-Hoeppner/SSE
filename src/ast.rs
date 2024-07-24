@@ -73,6 +73,45 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       Sexp::Inner((range, _), _) => range,
     }
   }
+  pub fn encloses_selection(&self, selection: &Range<usize>) -> bool {
+    self.range().start <= selection.start && self.range().end >= selection.end
+  }
+  pub fn enclosed_by_selection(&self, selection: &Range<usize>) -> bool {
+    self.range().start >= selection.start && self.range().end <= selection.end
+  }
+  pub(crate) fn reverse_innermost_predicate_path(
+    &self,
+    predicate: &impl Fn(&Self) -> bool,
+  ) -> Option<Vec<usize>> {
+    predicate(self).then(|| match self {
+      Sexp::Leaf(_, _) => vec![],
+      Sexp::Inner(_, children) => children
+        .iter()
+        .enumerate()
+        .find_map(|(i, child)| {
+          child.reverse_innermost_predicate_path(predicate).map(
+            |mut reverse_path| {
+              reverse_path.push(i);
+              reverse_path
+            },
+          )
+        })
+        .unwrap_or(vec![]),
+    })
+  }
+  pub fn innermost_predicate_path(
+    &self,
+    predicate: &impl Fn(&Self) -> bool,
+  ) -> Option<Vec<usize>> {
+    if let Some(mut reverse_path) =
+      self.reverse_innermost_predicate_path(predicate)
+    {
+      reverse_path.reverse();
+      Some(reverse_path)
+    } else {
+      None
+    }
+  }
 }
 
 impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>

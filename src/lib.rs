@@ -1,16 +1,16 @@
+mod ast;
+pub mod document;
 pub mod examples;
 mod parse;
 mod parser;
-mod sexp;
 pub mod str_tagged;
 pub mod syntax;
-
+pub use ast::DocumentSyntaxTree;
+pub use ast::RawSexp;
+pub use ast::Sexp;
+pub use ast::SyntaxTree;
 pub use parse::ParseError;
 pub use parser::Parser;
-pub use sexp::DocumentSyntaxTree;
-pub use sexp::RawSexp;
-pub use sexp::Sexp;
-pub use sexp::SyntaxTree;
 pub use syntax::Encloser;
 pub use syntax::Operator;
 pub use syntax::SyntaxContext;
@@ -19,7 +19,8 @@ pub use syntax::SyntaxGraph;
 #[cfg(test)]
 mod core_tests {
   use crate::{
-    sexp::RawSexp,
+    ast::RawSexp,
+    document::Document,
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
     },
@@ -670,5 +671,23 @@ mod core_tests {
         ),]
       )))
     );
+  }
+
+  #[test]
+  fn sexp_document_enclosing_paths() {
+    let doc: Document<_, _> = Parser::new(sexp_graph(), "(* (+ 1 2) 3)")
+      .try_into()
+      .unwrap();
+    assert_eq!(doc.innermost_enclosing_path(&(0..0)), vec![0]);
+    assert_eq!(doc.innermost_enclosing_path(&(1..1)), vec![0, 0]);
+    assert_eq!(doc.innermost_enclosing_path(&(2..2)), vec![0, 0]);
+    assert_eq!(doc.innermost_enclosing_path(&(3..3)), vec![0, 1]);
+    assert_eq!(doc.innermost_enclosing_path(&(4..4)), vec![0, 1, 0]);
+    assert_eq!(doc.innermost_enclosing_path(&(5..5)), vec![0, 1, 0]);
+    assert_eq!(doc.innermost_enclosing_path(&(6..6)), vec![0, 1, 1]);
+    assert_eq!(doc.innermost_enclosing_path(&(4..6)), vec![0, 1]);
+    assert_eq!(doc.innermost_enclosing_path(&(5..6)), vec![0, 1]);
+    assert_eq!(doc.innermost_enclosing_path(&(0..2)), vec![0]);
+    assert_eq!(doc.innermost_enclosing_path(&(100..200)), vec![]);
   }
 }
