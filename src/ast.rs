@@ -106,13 +106,13 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       Sexp::Inner((range, _), _) => range,
     }
   }
-  pub fn encloses_selection(&self, selection: &Range<usize>) -> bool {
+  pub fn encloses(&self, selection: &Range<usize>) -> bool {
     self.range().start <= selection.start && self.range().end >= selection.end
   }
-  pub fn enclosed_by_selection(&self, selection: &Range<usize>) -> bool {
+  pub fn enclosed_by(&self, selection: &Range<usize>) -> bool {
     self.range().start >= selection.start && self.range().end <= selection.end
   }
-  pub(crate) fn reverse_innermost_predicate_path(
+  pub(crate) fn innermost_predicate_reverse_path(
     &self,
     predicate: &impl Fn(&Self) -> bool,
   ) -> Option<Vec<usize>> {
@@ -122,7 +122,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
         .iter()
         .enumerate()
         .find_map(|(i, child)| {
-          child.reverse_innermost_predicate_path(predicate).map(
+          child.innermost_predicate_reverse_path(predicate).map(
             |mut reverse_path| {
               reverse_path.push(i);
               reverse_path
@@ -137,7 +137,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
     predicate: &impl Fn(&Self) -> bool,
   ) -> Option<Vec<usize>> {
     if let Some(mut reverse_path) =
-      self.reverse_innermost_predicate_path(predicate)
+      self.innermost_predicate_reverse_path(predicate)
     {
       reverse_path.reverse();
       Some(reverse_path)
@@ -145,6 +145,45 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       None
     }
   }
+  /*pub(crate) fn outermost_enclosed_reverse_paths(
+    &self,
+    selection: &Range<usize>,
+  ) -> Vec<Vec<usize>> {
+    if self.enclosed_by(selection) {
+      vec![vec![]]
+    } else {
+      match self {
+        Sexp::Leaf(_, _) => vec![],
+        Sexp::Inner(_, children) => children
+          .iter()
+          .enumerate()
+          .map(|(i, child)| {
+            child
+              .outermost_enclosed_reverse_paths(selection)
+              .into_iter()
+              .map(move |mut path| {
+                path.push(i);
+                path
+              })
+          })
+          .flatten()
+          .collect(),
+      }
+    }
+  }
+  pub fn outermost_enclosed_paths(
+    &self,
+    selection: &Range<usize>,
+  ) -> Vec<Vec<usize>> {
+    self
+      .outermost_enclosed_reverse_paths(selection)
+      .into_iter()
+      .map(|mut path| {
+        path.reverse();
+        path
+      })
+      .collect()
+  }*/
 }
 
 impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>

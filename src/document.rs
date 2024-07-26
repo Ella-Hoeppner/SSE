@@ -54,7 +54,7 @@ impl<E: Encloser, O: Operator> Document<E, O> {
       .iter()
       .enumerate()
       .find_map(|(i, syntax_tree)| {
-        syntax_tree.reverse_innermost_predicate_path(predicate).map(
+        syntax_tree.innermost_predicate_reverse_path(predicate).map(
           |mut reverse_path| {
             reverse_path.push(i);
             reverse_path.reverse();
@@ -68,12 +68,27 @@ impl<E: Encloser, O: Operator> Document<E, O> {
     &self,
     selection: &Range<usize>,
   ) -> Vec<usize> {
-    self.innermost_predicate_path(&|tree| tree.encloses_selection(selection))
+    self.innermost_predicate_path(&|tree| tree.encloses(selection))
   }
-  pub fn outermost_enclosed_by_path(
+  /*pub fn outermost_enclosed_paths(
     &self,
     selection: &Range<usize>,
-  ) -> Vec<usize> {
-    todo!()
-  }
+  ) -> Vec<Vec<usize>> {
+    self
+      .syntax_trees
+      .iter()
+      .enumerate()
+      .map(|(i, tree)| {
+        tree
+          .outermost_enclosed_reverse_paths(selection)
+          .into_iter()
+          .map(move |mut reverse_path| {
+            reverse_path.push(i);
+            reverse_path.reverse();
+            reverse_path
+          })
+      })
+      .flatten()
+      .collect()
+  }*/
 }
