@@ -70,6 +70,35 @@ impl<E: Encloser, O: Operator> Document<E, O> {
   ) -> Vec<usize> {
     self.innermost_predicate_path(&|tree| tree.encloses(selection))
   }
+  pub fn expand_selection(
+    &self,
+    selection: &Range<usize>,
+  ) -> Option<Range<usize>> {
+    let path = self.innermost_enclosing_path(selection);
+    if path.is_empty() {
+      None
+    } else {
+      let tree = self.get_subtree(&path).unwrap();
+      if tree.range() == selection {
+        if path.len() == 1 {
+          if self.syntax_trees.len() < 2 {
+            None
+          } else {
+            Some(
+              self.syntax_trees.first().unwrap().range().start
+                ..self.syntax_trees.last().unwrap().range().end,
+            )
+          }
+        } else {
+          let mut path = path;
+          path.pop();
+          Some(self.get_subtree(&path).unwrap().range().clone())
+        }
+      } else {
+        Some(tree.range().clone())
+      }
+    }
+  }
   /*pub fn outermost_enclosed_paths(
     &self,
     selection: &Range<usize>,

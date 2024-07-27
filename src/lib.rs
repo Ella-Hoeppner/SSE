@@ -753,4 +753,75 @@ mod core_tests {
     assert_eq!(doc.innermost_enclosing_path(&(0..2)), vec![0]);
     assert_eq!(doc.innermost_enclosing_path(&(100..200)), vec![]);
   }
+
+  #[test]
+  fn sexp_document_expand_selection() {
+    let doc: Document<_, _> = Parser::new(sexp_graph(), "(* (+ 1 2) 3) ")
+      .try_into()
+      .unwrap();
+
+    assert_eq!(doc.expand_selection(&(0..0)), Some(0..13));
+    assert_eq!(doc.expand_selection(&(0..1)), Some(0..13));
+    assert_eq!(doc.expand_selection(&(0..2)), Some(0..13));
+    assert_eq!(doc.expand_selection(&(13..13)), Some(0..13));
+    assert_eq!(doc.expand_selection(&(14..14)), None);
+
+    assert_eq!(doc.expand_selection(&(1..1)), Some(1..2));
+    assert_eq!(doc.expand_selection(&(1..2)), Some(0..13));
+
+    assert_eq!(doc.expand_selection(&(3..3)), Some(3..10));
+    assert_eq!(doc.expand_selection(&(3..4)), Some(3..10));
+    assert_eq!(doc.expand_selection(&(3..5)), Some(3..10));
+    assert_eq!(doc.expand_selection(&(3..10)), Some(0..13));
+
+    assert_eq!(doc.expand_selection(&(4..4)), Some(4..5));
+    assert_eq!(doc.expand_selection(&(4..5)), Some(3..10));
+
+    assert_eq!(doc.expand_selection(&(0..13)), None);
+  }
+
+  #[test]
+  fn two_sexp_document_expand_selection() {
+    let doc: Document<_, _> = Parser::new(sexp_graph(), "(+ 1 2) (* 3 4)")
+      .try_into()
+      .unwrap();
+
+    assert_eq!(doc.expand_selection(&(0..0)), Some(0..7));
+    assert_eq!(doc.expand_selection(&(7..7)), Some(0..7));
+
+    assert_eq!(doc.expand_selection(&(8..8)), Some(8..15));
+    assert_eq!(doc.expand_selection(&(15..15)), Some(8..15));
+
+    assert_eq!(doc.expand_selection(&(0..7)), Some(0..15));
+    assert_eq!(doc.expand_selection(&(0..15)), None);
+  }
+
+  #[test]
+  fn two_touching_sexp_document_expand_selection() {
+    let doc: Document<_, _> = Parser::new(sexp_graph(), "(+ 1 2)(* 3 4)")
+      .try_into()
+      .unwrap();
+
+    assert_eq!(doc.expand_selection(&(0..0)), Some(0..7));
+    assert_eq!(doc.expand_selection(&(7..7)), Some(0..7));
+
+    assert_eq!(doc.expand_selection(&(14..14)), Some(7..14));
+
+    assert_eq!(doc.expand_selection(&(7..14)), Some(0..14));
+  }
+
+  #[test]
+  fn plus_sexp_document_expand_selection() {
+    let doc: Document<_, _> =
+      Parser::new(plus_sexp_graph(), "1 + 2").try_into().unwrap();
+
+    assert_eq!(doc.expand_selection(&(0..0)), Some(0..1));
+    assert_eq!(doc.expand_selection(&(1..1)), Some(0..1));
+
+    assert_eq!(doc.expand_selection(&(4..4)), Some(4..5));
+    assert_eq!(doc.expand_selection(&(5..5)), Some(4..5));
+
+    assert_eq!(doc.expand_selection(&(2..2)), Some(0..5));
+    assert_eq!(doc.expand_selection(&(0..1)), Some(0..5));
+  }
 }
