@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
+  document::Document,
   syntax::{Encloser, Operator, SyntaxGraph},
   SyntaxContext,
 };
@@ -75,7 +76,12 @@ pub type StringTaggedSyntaxGraph<'g> =
 impl<'g> StringTaggedSyntaxGraph<'g> {
   pub fn from_descriptions(
     root: &'g str,
-    context_descriptions: Vec<(&'g str, Vec<&'g str>, Option<char>, Vec<char>)>,
+    context_descriptions: Vec<(
+      &'g str,
+      Vec<&'g str>,
+      Option<String>,
+      Vec<String>,
+    )>,
     encloser_descriptions: Vec<(&'g str, &'g str, &'g str, &'g str)>,
     operator_descriptions: Vec<(&'g str, &'g str, usize, usize, &'g str)>,
   ) -> Self {
@@ -135,8 +141,8 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
     )
   }
   pub fn contextless_from_descriptions(
-    whitespace_chars: Vec<char>,
-    escape_char: Option<char>,
+    whitespace_chars: Vec<String>,
+    escape_char: Option<String>,
     encloser_descriptions: Vec<(&'g str, &'g str, &'g str)>,
     operator_descriptions: Vec<(&'g str, &'g str, usize, usize)>,
   ) -> Self {
@@ -166,3 +172,6 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
     )
   }
 }
+
+pub type StringTaggedDocument<'t, 'g> =
+  Document<'t, &'g str, StringTaggedEncloser<'g>, StringTaggedOperator<'g>>;

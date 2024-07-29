@@ -146,12 +146,17 @@ pub fn clj_graph() -> CljSyntaxGraph {
             CljOperator::FormComment,
           ],
           None,
-          vec![' ', '\t', '\n', '\r'],
+          vec![
+            " ".to_string(),
+            "\n".to_string(),
+            "\t".to_string(),
+            "\r".to_string(),
+          ],
         ),
       ),
       (
         CljContext::String,
-        SyntaxContext::new(vec![], vec![], Some('\\'), vec![]),
+        SyntaxContext::new(vec![], vec![], Some('\\'.to_string()), vec![]),
       ),
       (
         CljContext::Comment,

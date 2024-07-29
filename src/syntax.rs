@@ -15,8 +15,8 @@ pub trait Operator: Debug + Clone + Eq + Hash {
 
 #[derive(Clone, Debug)]
 pub struct SyntaxContext<E: Encloser, O: Operator> {
-  whitespace_chars: Vec<char>,
-  pub(crate) escape_char: Option<char>,
+  whitespace_chars: Vec<String>,
+  pub(crate) escape_char: Option<String>,
   enclosers: Vec<E>,
   operators: Vec<O>,
 }
@@ -25,8 +25,8 @@ impl<'g, E: Encloser, O: Operator> SyntaxContext<E, O> {
   pub fn new(
     enclosers: Vec<E>,
     operators: Vec<O>,
-    escape_char: Option<char>,
-    whitespace_chars: Vec<char>,
+    escape_char: Option<String>,
+    whitespace_chars: Vec<String>,
   ) -> Self {
     Self {
       whitespace_chars,
@@ -41,8 +41,8 @@ impl<'g, E: Encloser, O: Operator> SyntaxContext<E, O> {
   pub fn operators(&self) -> &[O] {
     &self.operators
   }
-  pub fn is_whitespace(&self, c: char) -> bool {
-    self.whitespace_chars.contains(&c)
+  pub fn is_whitespace(&self, c: &str) -> bool {
+    self.whitespace_chars.contains(&c.to_string())
   }
 }
 
@@ -62,27 +62,24 @@ impl<E: Encloser, O: Operator> EncloserOrOperator<E, O> {
 
 #[derive(Debug, Clone)]
 pub struct SyntaxGraph<
-  ContextTag: Clone + Debug + PartialEq + Eq + Hash,
+  C: Clone + Debug + PartialEq + Eq + Hash,
   E: Encloser,
   O: Operator,
 > {
-  pub(crate) root: ContextTag,
-  contexts: HashMap<ContextTag, SyntaxContext<E, O>>,
-  encloser_contexts: HashMap<E, ContextTag>,
-  operator_contexts: HashMap<O, ContextTag>,
+  pub(crate) root: C,
+  contexts: HashMap<C, SyntaxContext<E, O>>,
+  encloser_contexts: HashMap<E, C>,
+  operator_contexts: HashMap<O, C>,
 }
 
-impl<
-    ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-    E: Encloser,
-    O: Operator,
-  > SyntaxGraph<ContextTag, E, O>
+impl<C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
+  SyntaxGraph<C, E, O>
 {
   pub fn new(
-    root: ContextTag,
-    contexts: HashMap<ContextTag, SyntaxContext<E, O>>,
-    encloser_contexts: HashMap<E, ContextTag>,
-    operator_contexts: HashMap<O, ContextTag>,
+    root: C,
+    contexts: HashMap<C, SyntaxContext<E, O>>,
+    encloser_contexts: HashMap<E, C>,
+    operator_contexts: HashMap<O, C>,
   ) -> Self {
     Self {
       root,
@@ -91,19 +88,19 @@ impl<
       operator_contexts,
     }
   }
-  pub fn get_context(&self, context_tag: &ContextTag) -> &SyntaxContext<E, O> {
+  pub fn get_context(&self, context_tag: &C) -> &SyntaxContext<E, O> {
     &self.contexts[&context_tag]
   }
-  pub fn get_encloser_context_tag(&self, encloser: &E) -> &ContextTag {
+  pub fn get_encloser_context_tag(&self, encloser: &E) -> &C {
     &self.encloser_contexts[encloser]
   }
-  pub fn get_operator_context_tag(&self, operator: &O) -> &ContextTag {
+  pub fn get_operator_context_tag(&self, operator: &O) -> &C {
     &self.operator_contexts[operator]
   }
   pub fn get_context_tag(
     &self,
     encloser_or_operator: &EncloserOrOperator<E, O>,
-  ) -> &ContextTag {
+  ) -> &C {
     match encloser_or_operator {
       EncloserOrOperator::Encloser(encloser) => {
         self.get_encloser_context_tag(encloser)
@@ -113,10 +110,7 @@ impl<
       }
     }
   }
-  pub(crate) fn get_closers<'g>(
-    &'g self,
-    context_tag: &ContextTag,
-  ) -> Vec<&'g str> {
+  pub(crate) fn get_closers<'g>(&'g self, context_tag: &C) -> Vec<&'g str> {
     self.contexts[context_tag]
       .enclosers()
       .iter()

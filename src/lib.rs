@@ -36,10 +36,19 @@ mod core_tests {
     RawSexp::inner(subexpressions)
   }
 
+  fn standard_whitespace_chars() -> Vec<String> {
+    vec![
+      " ".to_string(),
+      "\n".to_string(),
+      "\t".to_string(),
+      "\r".to_string(),
+    ]
+  }
+
   fn sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      vec![' ', '\n', '\t', '\r'],
-      Some('\\'),
+      standard_whitespace_chars(),
+      Some("\\".to_string()),
       vec![("", "(", ")")],
       vec![],
     )
@@ -47,8 +56,8 @@ mod core_tests {
 
   fn plus_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      vec![' ', '\n', '\t', '\r'],
-      Some('\\'),
+      standard_whitespace_chars(),
+      Some("\\".to_string()),
       vec![("", "(", ")")],
       vec![("PLUS", "+", 1, 1)],
     )
@@ -56,7 +65,7 @@ mod core_tests {
 
   fn pipe_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      vec![' ', '\n', '\t', '\r'],
+      standard_whitespace_chars(),
       None,
       vec![("", "(", ")"), ("PIPE", "|", "|")],
       vec![],
@@ -65,7 +74,7 @@ mod core_tests {
 
   fn quote_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      vec![' ', '\n', '\t', '\r'],
+      standard_whitespace_chars(),
       None,
       vec![("", "(", ")")],
       vec![("QUOTE", "'", 0, 1)],
@@ -80,9 +89,9 @@ mod core_tests {
           "root",
           vec!["", "STRING"],
           None,
-          vec![' ', '\n', '\t', '\r'],
+          standard_whitespace_chars(),
         ),
-        ("string", vec![], Some('\\'), vec![]),
+        ("string", vec![], Some('\\'.to_string()), vec![]),
       ],
       vec![("", "(", ")", "root"), ("STRING", "\"", "\"", "string")],
       vec![],
@@ -91,7 +100,7 @@ mod core_tests {
 
   fn multi_bracket_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      vec![' ', '\n', '\t', '\r'],
+      standard_whitespace_chars(),
       None,
       vec![
         ("", "(", ")"),
@@ -330,13 +339,13 @@ mod core_tests {
               "root",
               vec!["", "SQUARE"],
               None,
-              vec![' ', '\n', '\t', '\r'],
+              standard_whitespace_chars(),
             ),
             (
               "include_angle",
               vec!["", "SQUARE", "ANGLE"],
               None,
-              vec![' ', '\n', '\t', '\r'],
+              standard_whitespace_chars(),
             )
           ],
           vec![
@@ -367,12 +376,12 @@ mod core_tests {
         StringTaggedSyntaxGraph::from_descriptions(
           "root",
           vec![
-            ("root", vec!["", "COLON"], None, vec![' ', '\n', '\t', '\r'],),
+            ("root", vec!["", "COLON"], None, standard_whitespace_chars(),),
             (
               "include_angle",
               vec!["", "ANGLE", "COLON"],
               None,
-              vec![' ', '\n', '\t', '\r'],
+              standard_whitespace_chars(),
             )
           ],
           vec![("", "(", ")", "root"), ("ANGLE", "<", ">", "include_angle")],
@@ -675,9 +684,8 @@ mod core_tests {
 
   #[test]
   fn sexp_document_subtree() {
-    let doc: Document<_, _> = Parser::new(sexp_graph(), "(* (+ 1 2) 3)")
-      .try_into()
-      .unwrap();
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2) 3)").unwrap();
     assert_eq!(
       doc.get_subtree(&[0]).unwrap().clone(),
       Parser::new(sexp_graph(), "(* (+ 1 2) 3)")
@@ -703,8 +711,7 @@ mod core_tests {
 
   #[test]
   fn infix_sexp_document_subtree() {
-    let doc: Document<_, _> = Parser::new(plus_sexp_graph(), "(inc 1 + 2)")
-      .try_into()
+    let doc = Document::from_text_with_syntax(plus_sexp_graph(), "(inc 1 + 2)")
       .unwrap();
     assert_eq!(
       RawSexp::from(doc.get_subtree(&[0, 0]).unwrap().clone()),
@@ -738,9 +745,8 @@ mod core_tests {
 
   #[test]
   fn sexp_document_enclosing_paths() {
-    let doc: Document<_, _> = Parser::new(sexp_graph(), "(* (+ 1 2) 3)")
-      .try_into()
-      .unwrap();
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2) 3)").unwrap();
     assert_eq!(doc.innermost_enclosing_path(&(0..0)), vec![0]);
     assert_eq!(doc.innermost_enclosing_path(&(1..1)), vec![0, 0]);
     assert_eq!(doc.innermost_enclosing_path(&(2..2)), vec![0, 0]);
@@ -756,9 +762,8 @@ mod core_tests {
 
   #[test]
   fn sexp_document_expand_selection() {
-    let doc: Document<_, _> = Parser::new(sexp_graph(), "(* (+ 1 2) 3) ")
-      .try_into()
-      .unwrap();
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2) 3) ").unwrap();
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..13));
     assert_eq!(doc.expand_selection(&(0..1)), Some(0..13));
@@ -782,9 +787,8 @@ mod core_tests {
 
   #[test]
   fn two_sexp_document_expand_selection() {
-    let doc: Document<_, _> = Parser::new(sexp_graph(), "(+ 1 2) (* 3 4)")
-      .try_into()
-      .unwrap();
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(+ 1 2) (* 3 4)").unwrap();
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..7));
     assert_eq!(doc.expand_selection(&(7..7)), Some(0..7));
@@ -798,9 +802,8 @@ mod core_tests {
 
   #[test]
   fn two_touching_sexp_document_expand_selection() {
-    let doc: Document<_, _> = Parser::new(sexp_graph(), "(+ 1 2)(* 3 4)")
-      .try_into()
-      .unwrap();
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(+ 1 2)(* 3 4)").unwrap();
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..7));
     assert_eq!(doc.expand_selection(&(7..7)), Some(0..7));
@@ -812,8 +815,8 @@ mod core_tests {
 
   #[test]
   fn plus_sexp_document_expand_selection() {
-    let doc: Document<_, _> =
-      Parser::new(plus_sexp_graph(), "1 + 2").try_into().unwrap();
+    let doc =
+      Document::from_text_with_syntax(plus_sexp_graph(), "1 + 2").unwrap();
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..1));
     assert_eq!(doc.expand_selection(&(1..1)), Some(0..1));
@@ -823,5 +826,16 @@ mod core_tests {
 
     assert_eq!(doc.expand_selection(&(2..2)), Some(0..5));
     assert_eq!(doc.expand_selection(&(0..1)), Some(0..5));
+  }
+
+  #[test]
+  fn sexp_subtree_text() {
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2) 3)").unwrap();
+
+    assert_eq!(doc.get_subtree_text(&[0]).unwrap(), "(* (+ 1 2) 3)");
+    assert_eq!(doc.get_subtree_text(&[0, 0]).unwrap(), "*");
+    assert_eq!(doc.get_subtree_text(&[0, 1]).unwrap(), "(+ 1 2)");
+    assert_eq!(doc.get_subtree_text(&[0, 1, 2]).unwrap(), "2");
   }
 }

@@ -3,6 +3,8 @@ use std::{
   hash::Hash,
 };
 
+use unicode_segmentation::UnicodeSegmentation;
+
 use crate::{
   syntax::{Encloser, EncloserOrOperator, Operator, SyntaxGraph},
   DocumentSyntaxTree,
@@ -40,13 +42,13 @@ impl Display for ParseError {
 pub(crate) struct Parse<
   't,
   'g,
-  ContextTag: Clone + Debug + PartialEq + Eq + Hash,
+  C: Clone + Debug + PartialEq + Eq + Hash,
   E: Encloser,
   O: Operator,
 > {
   text: &'t str,
   inherited_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
-  syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
+  syntax_graph: &'g SyntaxGraph<C, E, O>,
   open_sexps: Vec<(
     usize,
     EncloserOrOperator<E, O>,
@@ -57,13 +59,13 @@ pub(crate) struct Parse<
 impl<
     't,
     'g,
-    ContextTag: Clone + Debug + PartialEq + Eq + Hash,
+    C: Clone + Debug + PartialEq + Eq + Hash,
     E: Encloser,
     O: Operator,
-  > Parse<'t, 'g, ContextTag, E, O>
+  > Parse<'t, 'g, C, E, O>
 {
   pub(crate) fn new(
-    syntax_graph: &'g SyntaxGraph<ContextTag, E, O>,
+    syntax_graph: &'g SyntaxGraph<C, E, O>,
     inherited_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
     text: &'t str,
   ) -> Self {
@@ -185,8 +187,8 @@ impl<
     }
 
     let mut indexed_characters = self.text[beginning_index..]
-      .char_indices()
-      .chain(std::iter::once((self.text.len() - beginning_index, ' ')))
+      .grapheme_indices(true)
+      .chain(std::iter::once((self.text.len() - beginning_index, " ")))
       .peekable();
 
     let mut current_terminal_beginning: Option<usize> = None;
@@ -235,7 +237,12 @@ impl<
 
       if escaped {
         escaped = false;
-      } else if active_context.escape_char == Some(character) {
+      } else if active_context
+        .escape_char
+        .as_ref()
+        .map(|char| char.as_str())
+        == Some(character)
+      {
         escaped = true;
         current_terminal_beginning =
           current_terminal_beginning.or(Some(character_index));

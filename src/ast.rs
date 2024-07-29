@@ -145,45 +145,6 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       None
     }
   }
-  /*pub(crate) fn outermost_enclosed_reverse_paths(
-    &self,
-    selection: &Range<usize>,
-  ) -> Vec<Vec<usize>> {
-    if self.enclosed_by(selection) {
-      vec![vec![]]
-    } else {
-      match self {
-        Sexp::Leaf(_, _) => vec![],
-        Sexp::Inner(_, children) => children
-          .iter()
-          .enumerate()
-          .map(|(i, child)| {
-            child
-              .outermost_enclosed_reverse_paths(selection)
-              .into_iter()
-              .map(move |mut path| {
-                path.push(i);
-                path
-              })
-          })
-          .flatten()
-          .collect(),
-      }
-    }
-  }
-  pub fn outermost_enclosed_paths(
-    &self,
-    selection: &Range<usize>,
-  ) -> Vec<Vec<usize>> {
-    self
-      .outermost_enclosed_reverse_paths(selection)
-      .into_iter()
-      .map(|mut path| {
-        path.reverse();
-        path
-      })
-      .collect()
-  }*/
 }
 
 impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>

@@ -7,28 +7,21 @@ use std::{fmt::Debug, hash::Hash};
 #[derive(Debug, Clone)]
 pub struct Parser<
   't,
-  ContextTag: Clone + Debug + PartialEq + Eq + Hash,
+  C: Clone + Debug + PartialEq + Eq + Hash,
   E: Encloser,
   O: Operator,
 > {
-  text: &'t str,
-  syntax_graph: SyntaxGraph<ContextTag, E, O>,
+  pub(crate) text: &'t str,
+  pub(crate) syntax_graph: SyntaxGraph<C, E, O>,
   parsed_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
 }
 
-impl<
-    't,
-    ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-    E: Encloser,
-    O: Operator,
-  > Parser<'t, ContextTag, E, O>
+impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
+  Parser<'t, C, E, O>
 {
-  pub fn new(
-    syntax_graph: SyntaxGraph<ContextTag, E, O>,
-    text: &'t str,
-  ) -> Self {
+  pub fn new(syntax_graph: SyntaxGraph<C, E, O>, text: &'t str) -> Self {
     Self {
       text,
       top_level_lookahead: syntax_graph
@@ -45,7 +38,7 @@ impl<
   }
   pub fn replace_syntax_graph(
     &mut self,
-    new_syntax_graph: SyntaxGraph<ContextTag, E, O>,
+    new_syntax_graph: SyntaxGraph<C, E, O>,
   ) {
     self.syntax_graph = new_syntax_graph;
     self.parsed_top_level_sexps.clear();

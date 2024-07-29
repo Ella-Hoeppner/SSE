@@ -1,34 +1,67 @@
 use std::{fmt::Debug, hash::Hash, ops::Range};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
   ast::InvalidTreePath, DocumentSyntaxTree, Encloser, Operator, ParseError,
-  Parser,
+  Parser, SyntaxGraph,
 };
 
-pub struct Document<E: Encloser, O: Operator> {
+pub struct Document<
+  't,
+  C: Clone + Debug + PartialEq + Eq + Hash,
+  E: Encloser,
+  O: Operator,
+> {
+  text: &'t str,
+  grapheme_indeces: Vec<usize>,
+  newline_indeces: Vec<usize>,
+  syntax_graph: SyntaxGraph<C, E, O>,
   syntax_trees: Vec<DocumentSyntaxTree<E, O>>,
 }
 
-impl<
-    ContextTag: Clone + Debug + PartialEq + Eq + Hash,
-    E: Encloser,
-    O: Operator,
-  > TryFrom<Parser<'_, ContextTag, E, O>> for Document<E, O>
+impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
+  TryFrom<Parser<'t, C, E, O>> for Document<'t, C, E, O>
 {
   type Error = ParseError;
 
-  fn try_from(
-    mut parser: Parser<'_, ContextTag, E, O>,
-  ) -> Result<Self, ParseError> {
+  fn try_from(mut parser: Parser<'t, C, E, O>) -> Result<Self, ParseError> {
     parser
       .read_all()
       .into_iter()
       .collect::<Result<Vec<_>, ParseError>>()
-      .map(|syntax_trees| Self { syntax_trees })
+      .map(|syntax_trees| {
+        let (mut grapheme_indeces, newline_indeces) =
+          parser.text.grapheme_indices(true).fold(
+            (vec![], vec![]),
+            |(mut grapheme_indeces, mut newline_indeces), (i, char)| {
+              grapheme_indeces.push(i);
+              if char == "\n" {
+                newline_indeces.push(i);
+              }
+              (grapheme_indeces, newline_indeces)
+            },
+          );
+        grapheme_indeces.push(parser.text.len());
+        Self {
+          text: parser.text,
+          grapheme_indeces,
+          newline_indeces,
+          syntax_graph: parser.syntax_graph,
+          syntax_trees,
+        }
+      })
   }
 }
 
-impl<E: Encloser, O: Operator> Document<E, O> {
+impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
+  Document<'t, C, E, O>
+{
+  pub fn from_text_with_syntax(
+    syntax_graph: SyntaxGraph<C, E, O>,
+    text: &'t str,
+  ) -> Result<Self, ParseError> {
+    Parser::new(syntax_graph, text).try_into()
+  }
   pub fn get_subtree(
     &self,
     path: &[usize],
@@ -44,6 +77,21 @@ impl<E: Encloser, O: Operator> Document<E, O> {
     } else {
       Err(InvalidTreePath)
     }
+  }
+  pub fn get_subtree_text(
+    &self,
+    path: &[usize],
+  ) -> Result<&'t str, InvalidTreePath> {
+    let range = self.get_subtree(path)?.range();
+    println!("{}, {}", range.start, range.end);
+    println!(
+      "{}, {}",
+      self.grapheme_indeces[range.start], self.grapheme_indeces[range.end]
+    );
+    Ok(
+      &self.text
+        [self.grapheme_indeces[range.start]..self.grapheme_indeces[range.end]],
+    )
   }
   pub fn innermost_predicate_path(
     &self,
@@ -99,25 +147,4 @@ impl<E: Encloser, O: Operator> Document<E, O> {
       }
     }
   }
-  /*pub fn outermost_enclosed_paths(
-    &self,
-    selection: &Range<usize>,
-  ) -> Vec<Vec<usize>> {
-    self
-      .syntax_trees
-      .iter()
-      .enumerate()
-      .map(|(i, tree)| {
-        tree
-          .outermost_enclosed_reverse_paths(selection)
-          .into_iter()
-          .map(move |mut reverse_path| {
-            reverse_path.push(i);
-            reverse_path.reverse();
-            reverse_path
-          })
-      })
-      .flatten()
-      .collect()
-  }*/
 }
