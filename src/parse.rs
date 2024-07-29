@@ -198,7 +198,6 @@ impl<
       indexed_characters.next()
     {
       let character_index = beginning_index + character_index_offset;
-      //println!("\n{character_index_offset} {character_index}: {character}");
 
       macro_rules! finish_terminal {
         () => {
@@ -219,7 +218,6 @@ impl<
       }
       macro_rules! skip_n_chars {
         ($n:expr) => {
-          //println!("skipping {} chars", $n);
           if $n > 1 {
             indexed_characters.nth($n - 2);
           }
@@ -233,7 +231,6 @@ impl<
           .map(|(_, tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root),
       );
-      //println!("active_context: {active_context:?}");
 
       if escaped {
         escaped = false;
@@ -251,10 +248,8 @@ impl<
       } else {
         let remaining_text = &self.text[character_index..];
 
-        //println!("awaiting closer: {:?}", self.awaited_closer());
         if let Some(awaited_closer) = self.awaited_closer() {
           if remaining_text.starts_with(awaited_closer) {
-            //println!("matched awaited closer {:?}", self.awaited_closer());
             let closer_len = awaited_closer.len();
             finish_terminal!();
 
@@ -327,10 +322,6 @@ impl<
 
         for closer in self.syntax_graph.get_closers(active_context_tag) {
           if remaining_text.starts_with(closer) {
-            /*println!(
-              "matched unexpected closer!! {:?}",
-              self.syntax_graph.get_closers(active_context_tag)
-            );*/
             return Err(ParseError::UnexpectedCloser(closer.to_string()));
           }
         }

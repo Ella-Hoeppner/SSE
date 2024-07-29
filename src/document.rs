@@ -83,11 +83,6 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
     path: &[usize],
   ) -> Result<&'t str, InvalidTreePath> {
     let range = self.get_subtree(path)?.range();
-    println!("{}, {}", range.start, range.end);
-    println!(
-      "{}, {}",
-      self.grapheme_indeces[range.start], self.grapheme_indeces[range.end]
-    );
     Ok(
       &self.text
         [self.grapheme_indeces[range.start]..self.grapheme_indeces[range.end]],
