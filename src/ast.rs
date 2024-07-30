@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::iter::Peekable;
 use std::{fmt, ops::Range};
 
 use crate::{syntax::EncloserOrOperator, Encloser, Operator};

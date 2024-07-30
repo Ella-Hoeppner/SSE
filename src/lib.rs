@@ -18,9 +18,11 @@ pub use syntax::SyntaxGraph;
 
 #[cfg(test)]
 mod core_tests {
+  use unicode_segmentation::UnicodeSegmentation;
+
   use crate::{
     ast::RawSexp,
-    document::Document,
+    document::{Document, InvalidDocumentCharPos, InvalidDocumentIndex},
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
     },
@@ -837,5 +839,94 @@ mod core_tests {
     assert_eq!(doc.get_subtree_text(&[0, 0]).unwrap(), "*");
     assert_eq!(doc.get_subtree_text(&[0, 1]).unwrap(), "(+ 1 2)");
     assert_eq!(doc.get_subtree_text(&[0, 1, 2]).unwrap(), "2");
+  }
+
+  #[test]
+  fn single_line_document_index_to_row_and_col() {
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2) 3)").unwrap();
+    for i in 0..doc.text.len() {
+      assert_eq!(doc.index_to_row_and_col(i), Ok((0, Some(i))));
+    }
+    assert_eq!(
+      doc.index_to_row_and_col(doc.text.len()),
+      Ok((0, Some(doc.text.len())))
+    );
+    assert_eq!(
+      doc.index_to_row_and_col(doc.text.len() + 1),
+      Err(InvalidDocumentIndex)
+    );
+  }
+
+  #[test]
+  fn multi_line_document_index_to_row_and_col() {
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2)\n   3\n   4)")
+        .unwrap();
+    for i in 0..10 {
+      assert_eq!(doc.index_to_row_and_col(i), Ok((0, Some(i))));
+    }
+    assert_eq!(doc.index_to_row_and_col(10), Ok((1, None)));
+    for i in 11..15 {
+      assert_eq!(doc.index_to_row_and_col(i), Ok((1, Some(i - 11))));
+    }
+    assert_eq!(doc.index_to_row_and_col(15), Ok((2, None)));
+    for i in 16..20 {
+      assert_eq!(doc.index_to_row_and_col(i), Ok((2, Some(i - 16))));
+    }
+  }
+
+  #[test]
+  fn single_line_document_row_and_col_to_index() {
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2) 3)").unwrap();
+    for i in 0..doc.text.len() {
+      assert_eq!(doc.row_and_col_to_index(0, i), Ok(i));
+    }
+  }
+
+  #[test]
+  fn multi_line_document_row_and_col_to_index() {
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(+ 1\n   2\n   3\n   4)")
+        .unwrap();
+    for i in 0..4 {
+      assert_eq!(doc.row_and_col_to_index(0, i), Ok(i));
+    }
+    assert_eq!(doc.row_and_col_to_index(0, 4), Ok(4));
+    assert_eq!(doc.row_and_col_to_index(0, 5), Err(InvalidDocumentCharPos));
+    for i in 0..4 {
+      assert_eq!(doc.row_and_col_to_index(1, i), Ok(5 + i));
+    }
+    assert_eq!(doc.row_and_col_to_index(1, 4), Ok(9));
+    assert_eq!(doc.row_and_col_to_index(1, 5), Err(InvalidDocumentCharPos));
+    for i in 0..4 {
+      assert_eq!(doc.row_and_col_to_index(2, i), Ok(10 + i));
+    }
+    assert_eq!(doc.row_and_col_to_index(2, 4), Ok(14));
+    assert_eq!(doc.row_and_col_to_index(2, 5), Err(InvalidDocumentCharPos));
+    for i in 0..5 {
+      assert_eq!(doc.row_and_col_to_index(3, i), Ok(15 + i));
+    }
+    assert_eq!(doc.row_and_col_to_index(3, 5), Ok(20));
+    assert_eq!(doc.row_and_col_to_index(3, 6), Err(InvalidDocumentCharPos));
+  }
+
+  #[test]
+  fn document_row_and_col_to_index_inverts_index_to_row_and_col() {
+    let doc = Document::from_text_with_syntax(
+      sexp_graph(),
+      "(* (+ 1 2)\n   3\n   4)\n",
+    )
+    .unwrap();
+    let graphemes: Vec<_> = doc.text.graphemes(true).collect();
+    for i in 0..doc.text.len() {
+      let (row, maybe_col) = doc.index_to_row_and_col(i).unwrap();
+      if let Some(col) = maybe_col {
+        assert_eq!(doc.row_and_col_to_index(row, col), Ok(i))
+      } else {
+        assert!(graphemes[i] == "\n")
+      }
+    }
   }
 }

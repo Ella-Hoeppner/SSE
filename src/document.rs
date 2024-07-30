@@ -12,12 +12,18 @@ pub struct Document<
   E: Encloser,
   O: Operator,
 > {
-  text: &'t str,
+  pub text: &'t str,
   grapheme_indeces: Vec<usize>,
   newline_indeces: Vec<usize>,
   syntax_graph: SyntaxGraph<C, E, O>,
   syntax_trees: Vec<DocumentSyntaxTree<E, O>>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidDocumentIndex;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidDocumentCharPos;
 
 impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
   TryFrom<Parser<'t, C, E, O>> for Document<'t, C, E, O>
@@ -140,6 +146,67 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
       } else {
         Some(tree.range().clone())
       }
+    }
+  }
+  pub fn row_and_col_to_index(
+    &self,
+    row: usize,
+    col: usize,
+  ) -> Result<usize, InvalidDocumentCharPos> {
+    if row == 0 {
+      if (self.newline_indeces.is_empty() && col < self.text.len())
+        || col <= self.newline_indeces[0]
+      {
+        Ok(col)
+      } else {
+        Err(InvalidDocumentCharPos)
+      }
+    } else {
+      if row == self.newline_indeces.len() {
+        let last_line_start = self.newline_indeces.last().unwrap();
+        let index = last_line_start + 1 + col;
+        if index <= self.text.len() {
+          Ok(index)
+        } else {
+          Err(InvalidDocumentCharPos)
+        }
+      } else if row < self.newline_indeces.len() {
+        let previous_line_start = self.newline_indeces[row - 1];
+        let line_length = self.newline_indeces[row] - previous_line_start;
+        if col < line_length {
+          Ok(previous_line_start + 1 + col)
+        } else {
+          Err(InvalidDocumentCharPos)
+        }
+      } else {
+        Err(InvalidDocumentCharPos)
+      }
+    }
+  }
+  pub fn index_to_row_and_col(
+    &self,
+    index: usize,
+  ) -> Result<(usize, Option<usize>), InvalidDocumentIndex> {
+    if index <= self.text.len() {
+      Ok(
+        self
+          .newline_indeces
+          .iter()
+          .copied()
+          .enumerate()
+          .rev()
+          .find_map(|(line_index, previous_newline_index)| {
+            (previous_newline_index <= index).then(|| {
+              (
+                line_index + 1,
+                (index - previous_newline_index).checked_sub(1),
+              )
+            })
+          })
+          .unwrap_or((0, Some(index))),
+      )
+    } else {
+      Err(InvalidDocumentIndex)
     }
   }
 }
