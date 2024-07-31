@@ -23,6 +23,9 @@ mod core_tests {
   use crate::{
     ast::RawSexp,
     document::{Document, InvalidDocumentCharPos, InvalidDocumentIndex},
+    examples::basic::{
+      sexp_graph, standard_sexp_whitespace_chars, SexpEncloser,
+    },
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
     },
@@ -38,18 +41,9 @@ mod core_tests {
     RawSexp::inner(subexpressions)
   }
 
-  fn standard_whitespace_chars() -> Vec<String> {
-    vec![
-      " ".to_string(),
-      "\n".to_string(),
-      "\t".to_string(),
-      "\r".to_string(),
-    ]
-  }
-
-  fn sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
+  fn escaped_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_whitespace_chars(),
+      standard_sexp_whitespace_chars(),
       Some("\\".to_string()),
       vec![("", "(", ")")],
       vec![],
@@ -58,7 +52,7 @@ mod core_tests {
 
   fn plus_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_whitespace_chars(),
+      standard_sexp_whitespace_chars(),
       Some("\\".to_string()),
       vec![("", "(", ")")],
       vec![("PLUS", "+", 1, 1)],
@@ -67,7 +61,7 @@ mod core_tests {
 
   fn pipe_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_whitespace_chars(),
+      standard_sexp_whitespace_chars(),
       None,
       vec![("", "(", ")"), ("PIPE", "|", "|")],
       vec![],
@@ -76,7 +70,7 @@ mod core_tests {
 
   fn quote_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_whitespace_chars(),
+      standard_sexp_whitespace_chars(),
       None,
       vec![("", "(", ")")],
       vec![("QUOTE", "'", 0, 1)],
@@ -91,7 +85,7 @@ mod core_tests {
           "root",
           vec!["", "STRING"],
           None,
-          standard_whitespace_chars(),
+          standard_sexp_whitespace_chars(),
         ),
         ("string", vec![], Some('\\'.to_string()), vec![]),
       ],
@@ -102,7 +96,7 @@ mod core_tests {
 
   fn multi_bracket_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_whitespace_chars(),
+      standard_sexp_whitespace_chars(),
       None,
       vec![
         ("", "(", ")"),
@@ -341,13 +335,13 @@ mod core_tests {
               "root",
               vec!["", "SQUARE"],
               None,
-              standard_whitespace_chars(),
+              standard_sexp_whitespace_chars(),
             ),
             (
               "include_angle",
               vec!["", "SQUARE", "ANGLE"],
               None,
-              standard_whitespace_chars(),
+              standard_sexp_whitespace_chars(),
             )
           ],
           vec![
@@ -378,12 +372,17 @@ mod core_tests {
         StringTaggedSyntaxGraph::from_descriptions(
           "root",
           vec![
-            ("root", vec!["", "COLON"], None, standard_whitespace_chars(),),
+            (
+              "root",
+              vec!["", "COLON"],
+              None,
+              standard_sexp_whitespace_chars(),
+            ),
             (
               "include_angle",
               vec!["", "ANGLE", "COLON"],
               None,
-              standard_whitespace_chars(),
+              standard_sexp_whitespace_chars(),
             )
           ],
           vec![("", "(", ")", "root"), ("ANGLE", "<", ">", "include_angle")],
@@ -420,7 +419,7 @@ mod core_tests {
   #[test]
   fn escaped_closer() {
     assert_eq!(
-      Parser::new(sexp_graph(), "(\\))").read_next_sexp(),
+      Parser::new(escaped_sexp_graph(), "(\\))").read_next_sexp(),
       Ok(Some(inner(vec![leaf("\\)".to_string())])))
     );
   }
@@ -428,7 +427,7 @@ mod core_tests {
   #[test]
   fn escaped_opener() {
     assert_eq!(
-      Parser::new(sexp_graph(), "(\\()").read_next_sexp(),
+      Parser::new(escaped_sexp_graph(), "(\\()").read_next_sexp(),
       Ok(Some(inner(vec![leaf("\\(".to_string())])))
     );
   }
@@ -575,10 +574,7 @@ mod core_tests {
     assert_eq!(
       Parser::new(sexp_graph(), "(+ 1 2)").read_next(),
       Ok(Some(DocumentSyntaxTree::Inner(
-        (
-          0..7,
-          EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
-        ),
+        (0..7, EncloserOrOperator::Encloser(SexpEncloser)),
         vec![
           DocumentSyntaxTree::Leaf(1..2, "+".to_string()),
           DocumentSyntaxTree::Leaf(3..4, "1".to_string()),
@@ -593,19 +589,11 @@ mod core_tests {
     assert_eq!(
       Parser::new(sexp_graph(), "(* (+ 1 2) 3)").read_next(),
       Ok(Some(DocumentSyntaxTree::Inner(
-        (
-          0..13,
-          EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
-        ),
+        (0..13, EncloserOrOperator::Encloser(SexpEncloser)),
         vec![
           DocumentSyntaxTree::Leaf(1..2, "*".to_string()),
           DocumentSyntaxTree::Inner(
-            (
-              3..10,
-              EncloserOrOperator::Encloser(StringTaggedEncloser::new(
-                "", "(", ")"
-              ))
-            ),
+            (3..10, EncloserOrOperator::Encloser(SexpEncloser)),
             vec![
               DocumentSyntaxTree::Leaf(4..5, "+".to_string()),
               DocumentSyntaxTree::Leaf(6..7, "1".to_string()),
