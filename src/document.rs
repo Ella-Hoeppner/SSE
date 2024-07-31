@@ -155,7 +155,7 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
   ) -> Result<usize, InvalidDocumentCharPos> {
     if row == 0 {
       if (self.newline_indeces.is_empty() && col < self.text.len())
-        || col <= self.newline_indeces[0]
+        || (!self.newline_indeces.is_empty() && col <= self.newline_indeces[0])
       {
         Ok(col)
       } else {
