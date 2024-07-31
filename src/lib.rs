@@ -834,11 +834,11 @@ mod core_tests {
     let doc =
       Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2) 3)").unwrap();
     for i in 0..doc.text.len() {
-      assert_eq!(doc.index_to_row_and_col(i), Ok((0, Some(i))));
+      assert_eq!(doc.index_to_row_and_col(i), Ok((0, i)));
     }
     assert_eq!(
       doc.index_to_row_and_col(doc.text.len()),
-      Ok((0, Some(doc.text.len())))
+      Ok((0, doc.text.len()))
     );
     assert_eq!(
       doc.index_to_row_and_col(doc.text.len() + 1),
@@ -851,16 +851,14 @@ mod core_tests {
     let doc =
       Document::from_text_with_syntax(sexp_graph(), "(* (+ 1 2)\n   3\n   4)")
         .unwrap();
-    for i in 0..10 {
-      assert_eq!(doc.index_to_row_and_col(i), Ok((0, Some(i))));
+    for i in 0..11 {
+      assert_eq!(doc.index_to_row_and_col(i), Ok((0, i)));
     }
-    assert_eq!(doc.index_to_row_and_col(10), Ok((1, None)));
-    for i in 11..15 {
-      assert_eq!(doc.index_to_row_and_col(i), Ok((1, Some(i - 11))));
+    for i in 11..16 {
+      assert_eq!(doc.index_to_row_and_col(i), Ok((1, i - 11)));
     }
-    assert_eq!(doc.index_to_row_and_col(15), Ok((2, None)));
     for i in 16..20 {
-      assert_eq!(doc.index_to_row_and_col(i), Ok((2, Some(i - 16))));
+      assert_eq!(doc.index_to_row_and_col(i), Ok((2, i - 16)));
     }
   }
 
@@ -909,12 +907,8 @@ mod core_tests {
     .unwrap();
     let graphemes: Vec<_> = doc.text.graphemes(true).collect();
     for i in 0..doc.text.len() {
-      let (row, maybe_col) = doc.index_to_row_and_col(i).unwrap();
-      if let Some(col) = maybe_col {
-        assert_eq!(doc.row_and_col_to_index(row, col), Ok(i))
-      } else {
-        assert!(graphemes[i] == "\n")
-      }
+      let (row, col) = doc.index_to_row_and_col(i).unwrap();
+      assert_eq!(doc.row_and_col_to_index(row, col), Ok(i));
     }
   }
 }

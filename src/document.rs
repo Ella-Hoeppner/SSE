@@ -186,7 +186,7 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
   pub fn index_to_row_and_col(
     &self,
     index: usize,
-  ) -> Result<(usize, Option<usize>), InvalidDocumentIndex> {
+  ) -> Result<(usize, usize), InvalidDocumentIndex> {
     if index <= self.text.len() {
       Ok(
         self
@@ -196,14 +196,10 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
           .enumerate()
           .rev()
           .find_map(|(line_index, previous_newline_index)| {
-            (previous_newline_index <= index).then(|| {
-              (
-                line_index + 1,
-                (index - previous_newline_index).checked_sub(1),
-              )
-            })
+            (previous_newline_index < index)
+              .then(|| (line_index + 1, index - previous_newline_index - 1))
           })
-          .unwrap_or((0, Some(index))),
+          .unwrap_or((0, index)),
       )
     } else {
       Err(InvalidDocumentIndex)
