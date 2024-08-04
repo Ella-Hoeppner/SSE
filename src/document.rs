@@ -148,6 +148,25 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
       }
     }
   }
+  pub fn move_cursor_to_start(&self, selection: &Range<usize>) -> usize {
+    let mut enclosing_path = self.innermost_enclosing_path(selection);
+    let start_of_enclosing =
+      self.get_subtree(&enclosing_path).unwrap().range().start;
+    if selection == &(start_of_enclosing..start_of_enclosing) {
+      if enclosing_path.is_empty() {
+        selection.start
+      } else if enclosing_path.last().unwrap() == &0 {
+        enclosing_path.pop();
+        self.get_subtree(&enclosing_path).unwrap().range().start
+      } else {
+        let last_index = enclosing_path.len() - 1;
+        enclosing_path[last_index] -= 1;
+        self.get_subtree(&enclosing_path).unwrap().range().start
+      }
+    } else {
+      start_of_enclosing
+    }
+  }
   pub fn row_and_col_to_index(
     &self,
     row: usize,
