@@ -3,7 +3,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
   ast::InvalidTreePath, DocumentSyntaxTree, Encloser, Operator, ParseError,
-  Parser, SyntaxGraph,
+  Parser, Sexp, SyntaxGraph,
 };
 
 pub struct Document<
@@ -150,21 +150,42 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
   }
   pub fn move_cursor_to_start(&self, selection: &Range<usize>) -> usize {
     let mut enclosing_path = self.innermost_enclosing_path(selection);
-    let start_of_enclosing =
-      self.get_subtree(&enclosing_path).unwrap().range().start;
-    if selection == &(start_of_enclosing..start_of_enclosing) {
-      if enclosing_path.is_empty() {
-        selection.start
-      } else if enclosing_path.last().unwrap() == &0 {
-        enclosing_path.pop();
-        self.get_subtree(&enclosing_path).unwrap().range().start
-      } else {
-        let last_index = enclosing_path.len() - 1;
-        enclosing_path[last_index] -= 1;
-        self.get_subtree(&enclosing_path).unwrap().range().start
-      }
+    let push_preceeding_tree =
+      |path: &mut Vec<usize>, trees: &[DocumentSyntaxTree<E, O>]| {
+        if let Some(preceding_tree_index) = trees
+          .iter()
+          .enumerate()
+          .rev()
+          .filter_map(|(i, tree)| (tree.range().end < selection.end).then(|| i))
+          .next()
+        {
+          path.push(preceding_tree_index);
+        }
+      };
+    if enclosing_path.is_empty() {
+      push_preceeding_tree(&mut enclosing_path, &self.syntax_trees);
     } else {
-      start_of_enclosing
+      let enclosing_subtree = self.get_subtree(&enclosing_path).unwrap();
+      let start_of_enclosing = enclosing_subtree.range().start;
+      if selection == &(start_of_enclosing..start_of_enclosing) {
+        if enclosing_path.is_empty() {
+          return selection.start;
+        } else if enclosing_path.last().unwrap() == &0 {
+          enclosing_path.pop();
+        } else {
+          let last_index = enclosing_path.len() - 1;
+          enclosing_path[last_index] -= 1;
+        }
+      } else {
+        if let Sexp::Inner(_, children) = enclosing_subtree {
+          push_preceeding_tree(&mut enclosing_path, &children);
+        }
+      }
+    }
+    if enclosing_path.is_empty() {
+      selection.start
+    } else {
+      self.get_subtree(&enclosing_path).unwrap().range().start
     }
   }
   pub fn row_and_col_to_index(
