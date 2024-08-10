@@ -2,8 +2,8 @@ use std::{fmt::Debug, hash::Hash, ops::Range};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
-  ast::InvalidTreePath, DocumentSyntaxTree, Encloser, Operator, ParseError,
-  Parser, Sexp, SyntaxGraph,
+  ast::InvalidTreePath, syntax::EncloserOrOperator, DocumentSyntaxTree,
+  Encloser, Operator, ParseError, Parser, Sexp, SyntaxGraph,
 };
 
 pub struct Document<
@@ -149,111 +149,108 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
     }
   }
   pub fn move_cursor_to_start(&self, selection: &Range<usize>) -> usize {
+    if selection.start != selection.end {
+      return selection.end;
+    }
+    let cursor = selection.end;
     let mut enclosing_path = self.innermost_enclosing_path(selection);
-    let push_preceeding_tree =
-      |path: &mut Vec<usize>, trees: &[DocumentSyntaxTree<E, O>]| {
-        if let Some(preceding_tree_index) = trees
-          .iter()
-          .enumerate()
-          .rev()
-          .filter_map(|(i, tree)| (tree.range().end < selection.end).then(|| i))
-          .next()
-        {
-          path.push(preceding_tree_index);
-        }
-      };
     if enclosing_path.is_empty() {
-      push_preceeding_tree(&mut enclosing_path, &self.syntax_trees);
+      if let Some(preceding_tree_index) = self
+        .syntax_trees
+        .iter()
+        .enumerate()
+        .rev()
+        .filter_map(|(i, tree)| (tree.range().end < cursor).then(|| i))
+        .next()
+      {
+        enclosing_path.push(preceding_tree_index);
+      }
     } else {
       let enclosing_subtree = self.get_subtree(&enclosing_path).unwrap();
       let start_of_enclosing = enclosing_subtree.range().start;
       let end_of_enclosing = enclosing_subtree.range().end;
-      if selection == &(start_of_enclosing..start_of_enclosing) {
+      if cursor == start_of_enclosing {
         if enclosing_path.is_empty() {
-          return selection.start;
+          return cursor;
         } else if enclosing_path.last().unwrap() == &0 {
           enclosing_path.pop();
         } else {
           let last_index = enclosing_path.len() - 1;
           enclosing_path[last_index] -= 1;
         }
-      } else if selection != &(end_of_enclosing..end_of_enclosing) {
-        if let Sexp::Inner(_, children) = enclosing_subtree {
-          push_preceeding_tree(&mut enclosing_path, &children);
-        }
+      } else if cursor != end_of_enclosing {
+        return cursor;
       }
     }
     if enclosing_path.is_empty() {
-      selection.start
+      cursor
     } else {
       self.get_subtree(&enclosing_path).unwrap().range().start
     }
   }
   pub fn move_cursor_to_end(&self, selection: &Range<usize>) -> usize {
+    if selection.start != selection.end {
+      return selection.end;
+    }
+    let cursor = selection.end;
     let mut enclosing_path = self.innermost_enclosing_path(selection);
-    let push_following_tree =
-      |path: &mut Vec<usize>, trees: &[DocumentSyntaxTree<E, O>]| {
-        if let Some(preceding_tree_index) = trees
-          .iter()
-          .enumerate()
-          .filter_map(|(i, tree)| {
-            (tree.range().start > selection.start).then(|| i)
-          })
-          .next()
-        {
-          path.push(preceding_tree_index);
-        }
-      };
     if enclosing_path.is_empty() {
-      push_following_tree(&mut enclosing_path, &self.syntax_trees);
+      if let Some(preceding_tree_index) = self
+        .syntax_trees
+        .iter()
+        .enumerate()
+        .filter_map(|(i, tree)| (tree.range().start > cursor).then(|| i))
+        .next()
+      {
+        enclosing_path.push(preceding_tree_index);
+      }
     } else {
-      let enclosing_subtree = self.get_subtree(&enclosing_path).unwrap();
-      let start_of_enclosing = enclosing_subtree.range().start;
-      let end_of_enclosing = enclosing_subtree.range().end;
-      if selection == &(end_of_enclosing..end_of_enclosing) {
-        match enclosing_path.len() {
-          0 => {
-            return selection.end;
-          }
-          1 => {
-            if enclosing_path[0] < self.syntax_trees.len() - 1 {
-              enclosing_path[0] += 1;
+      if cursor == self.get_subtree(&enclosing_path).unwrap().range().end {
+        loop {
+          match enclosing_path.len() {
+            0 => {
+              return cursor;
             }
-          }
-          path_length => {
-            let parent = self
-              .get_subtree(&enclosing_path[0..path_length - 1])
-              .unwrap();
-            let sibling_count = if let Sexp::Inner(_, siblings) = parent {
-              siblings.len()
-            } else {
-              unreachable!("uh oh")
-            };
-            if *enclosing_path.last().unwrap() == sibling_count - 1 {
-              loop {
-                enclosing_path.pop();
-                if enclosing_path.is_empty() {
-                  return end_of_enclosing;
-                }
-                let new_end =
-                  self.get_subtree(&enclosing_path).unwrap().range().end;
-                if new_end != end_of_enclosing {
-                  return new_end;
+            1 => {
+              if enclosing_path[0] < self.syntax_trees.len() - 1 {
+                enclosing_path[0] += 1;
+              }
+            }
+            path_length => {
+              let parent_subtree = self
+                .get_subtree(&enclosing_path[0..path_length - 1])
+                .unwrap();
+              if let DocumentSyntaxTree::Inner(
+                (_, EncloserOrOperator::Operator(_)),
+                _,
+              ) = parent_subtree
+              {
+                if parent_subtree.range().end == cursor {
+                  enclosing_path.pop();
+                  continue;
                 }
               }
-            } else {
-              enclosing_path[path_length - 1] += 1;
+              let parent = self
+                .get_subtree(&enclosing_path[0..path_length - 1])
+                .unwrap();
+              let sibling_count = if let Sexp::Inner(_, siblings) = parent {
+                siblings.len()
+              } else {
+                unreachable!("uh oh")
+              };
+              if *enclosing_path.last().unwrap() == sibling_count - 1 {
+                enclosing_path.pop();
+              } else {
+                enclosing_path[path_length - 1] += 1;
+              }
             }
           }
-        }
-      } else if selection != &(start_of_enclosing..start_of_enclosing) {
-        if let Sexp::Inner(_, children) = enclosing_subtree {
-          push_following_tree(&mut enclosing_path, &children);
+          break;
         }
       }
     }
     if enclosing_path.is_empty() {
-      selection.end
+      cursor
     } else {
       self.get_subtree(&enclosing_path).unwrap().range().end
     }
