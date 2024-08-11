@@ -16,7 +16,7 @@ pub struct Document<
   grapheme_indeces: Vec<usize>,
   newline_indeces: Vec<usize>,
   syntax_graph: SyntaxGraph<C, E, O>,
-  syntax_trees: Vec<DocumentSyntaxTree<E, O>>,
+  pub syntax_trees: Vec<DocumentSyntaxTree<E, O>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
