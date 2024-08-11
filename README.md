@@ -3,15 +3,19 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
-* Track all positioning while parsing, including whitespace
-  * with this it should be possible to:
-    * losslessly reconstruct the original tree from a `SyntaxTree`
-    * identify, for a given line number and character position, where in the syntax tree it falls
+high priority:
+* BUG: Parsing never finishes when there are multiple top-level forms in grammars with operators that consume to the left
 * pretty printing
-* have a flag to treat certain tags (or context tags?) as whitespace, from the outside
-  * this is necessary for comments, to make sure they don't get included in the syntax tree
-  * prove this works with a clj example with a comment
-* support turning a `Sexp` back into a `SyntaxTree` for a given `SyntaxGraph`
+* generate info necessary for coloring text
+* have a flag to treat certain context tags as comments
+  * have a function for removing all of these from an AST
+  * these shouldn't be included in the left/right consumption counts for operators
+
+low priority:
+* support for custom pretty-printing/formatting logic
+  * this will be useful for things like putting names and bindings on the same line in `let`, or doing spacing differently than normal for certain special forms like `fn`
+  * I guess this could work by giving the formatter a collection of (pattern, rule) pairs, where each pattern is a syntax tree (plus a context, maybe?) with one or more holes in it, and the rule describes how to format stuff inside of one of those holes. So like for `let` formatting, the pattern might look like `(let [<HOLE 1>] <HOLE 2>)`, and the rule might be like `in HOLE 1, place each group of 2 on the same line`
+    * I guess this is kinda like part of a regex system. might want a general AST-regex system for other purposes like searching...
 * validate the coherence of syntax graph
   * things to validate:
     * no `ContextTag`s or `Tag`s should be duplicated
@@ -22,8 +26,5 @@ A parser for **S**ugared **S**-**E**xpressions.
     * all `ContextTag`s should be reachable from root
     * no markers within a context are ambiguous, i.e. nothing is a prefix of another
       * or I guess, maybe allow markers that prefix others, but always give parsing precedence to the longer ones
-* support for custom pretty-printing/formatting logic, conditional on tag + first element after tag
-  * or maybe just accept a `fn(SyntaxTree) -> Option<Formatting Info>` that can scan each form and optionally give override control of the normal formatting, for more generality?
-  * This will be useful for having clj-like autoformatting, where `let` and `fn` forms are formatted differently from normal applications, which is really nice
 * maybe let enclosers consume args on the right/left too?
   * this would make bracket-generic syntax possible, e.g. `Type<Generic>`, where the `<...>` encloser consumes one left arg

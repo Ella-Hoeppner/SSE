@@ -150,7 +150,7 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
   }
   pub fn move_cursor_to_start(&self, selection: &Range<usize>) -> usize {
     if selection.start != selection.end {
-      return selection.end;
+      return selection.start;
     }
     let cursor = selection.end;
     let mut enclosing_path = self.innermost_enclosing_path(selection);

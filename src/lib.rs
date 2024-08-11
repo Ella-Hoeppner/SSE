@@ -667,7 +667,7 @@ mod core_tests {
             DocumentSyntaxTree::Leaf(1..2, "1".to_string()),
             DocumentSyntaxTree::Leaf(3..4, "2".to_string())
           ]
-        ),]
+        )]
       )))
     );
   }
@@ -727,6 +727,26 @@ mod core_tests {
     assert_eq!(
       RawSexp::from(doc.get_subtree(&[0, 1, 1]).unwrap().clone()),
       Parser::new(plus_sexp_graph(), "2")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+  }
+
+  #[test]
+  fn multiple_infix_sexp_document_subtree() {
+    let doc =
+      Document::from_text_with_syntax(plus_sexp_graph(), "a b").unwrap();
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0]).unwrap().clone()),
+      Parser::new(plus_sexp_graph(), "a")
+        .read_next_sexp()
+        .unwrap()
+        .unwrap()
+    );
+    assert_eq!(
+      RawSexp::from(doc.get_subtree(&[0]).unwrap().clone()),
+      Parser::new(plus_sexp_graph(), "b")
         .read_next_sexp()
         .unwrap()
         .unwrap()
