@@ -118,3 +118,34 @@ impl<C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
       .collect()
   }
 }
+
+impl<E: Encloser, O: Operator> SyntaxGraph<(), E, O> {
+  pub fn contextless(
+    enclosers: Vec<E>,
+    operators: Vec<O>,
+    whitespace_chars: Vec<String>,
+  ) -> Self {
+    Self::new(
+      (),
+      [(
+        (),
+        SyntaxContext::new(
+          enclosers.clone(),
+          operators.clone(),
+          None,
+          whitespace_chars,
+        ),
+      )]
+      .into_iter()
+      .collect(),
+      enclosers
+        .into_iter()
+        .map(|encloser| (encloser, ()))
+        .collect(),
+      operators
+        .into_iter()
+        .map(|operator| (operator, ()))
+        .collect(),
+    )
+  }
+}
