@@ -16,6 +16,15 @@ pub use syntax::Operator;
 pub use syntax::SyntaxContext;
 pub use syntax::SyntaxGraph;
 
+pub fn standard_whitespace_chars() -> Vec<String> {
+  vec![
+    " ".to_string(),
+    "\n".to_string(),
+    "\t".to_string(),
+    "\r".to_string(),
+  ]
+}
+
 #[cfg(test)]
 mod core_tests {
   use unicode_segmentation::UnicodeSegmentation;
@@ -23,9 +32,8 @@ mod core_tests {
   use crate::{
     ast::RawSexp,
     document::{Document, InvalidDocumentCharPos, InvalidDocumentIndex},
-    examples::basic::{
-      sexp_graph, standard_sexp_whitespace_chars, SexpEncloser,
-    },
+    examples::basic::{sexp_graph, SexpEncloser},
+    standard_whitespace_chars,
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
     },
@@ -43,7 +51,7 @@ mod core_tests {
 
   fn escaped_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_sexp_whitespace_chars(),
+      standard_whitespace_chars(),
       Some("\\".to_string()),
       vec![("", "(", ")")],
       vec![],
@@ -52,7 +60,7 @@ mod core_tests {
 
   fn plus_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_sexp_whitespace_chars(),
+      standard_whitespace_chars(),
       Some("\\".to_string()),
       vec![("", "(", ")")],
       vec![("PLUS", "+", 1, 1)],
@@ -61,7 +69,7 @@ mod core_tests {
 
   fn pipe_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_sexp_whitespace_chars(),
+      standard_whitespace_chars(),
       None,
       vec![("", "(", ")"), ("PIPE", "|", "|")],
       vec![],
@@ -70,7 +78,7 @@ mod core_tests {
 
   fn quote_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_sexp_whitespace_chars(),
+      standard_whitespace_chars(),
       None,
       vec![("", "(", ")")],
       vec![("QUOTE", "'", 0, 1)],
@@ -85,7 +93,7 @@ mod core_tests {
           "root",
           vec!["", "STRING"],
           None,
-          standard_sexp_whitespace_chars(),
+          standard_whitespace_chars(),
         ),
         ("string", vec![], Some('\\'.to_string()), vec![]),
       ],
@@ -96,7 +104,7 @@ mod core_tests {
 
   fn multi_bracket_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
     StringTaggedSyntaxGraph::contextless_from_descriptions(
-      standard_sexp_whitespace_chars(),
+      standard_whitespace_chars(),
       None,
       vec![
         ("", "(", ")"),
@@ -335,13 +343,13 @@ mod core_tests {
               "root",
               vec!["", "SQUARE"],
               None,
-              standard_sexp_whitespace_chars(),
+              standard_whitespace_chars(),
             ),
             (
               "include_angle",
               vec!["", "SQUARE", "ANGLE"],
               None,
-              standard_sexp_whitespace_chars(),
+              standard_whitespace_chars(),
             )
           ],
           vec![
@@ -372,17 +380,12 @@ mod core_tests {
         StringTaggedSyntaxGraph::from_descriptions(
           "root",
           vec![
-            (
-              "root",
-              vec!["", "COLON"],
-              None,
-              standard_sexp_whitespace_chars(),
-            ),
+            ("root", vec!["", "COLON"], None, standard_whitespace_chars(),),
             (
               "include_angle",
               vec!["", "ANGLE", "COLON"],
               None,
-              standard_sexp_whitespace_chars(),
+              standard_whitespace_chars(),
             )
           ],
           vec![("", "(", ")", "root"), ("ANGLE", "<", ">", "include_angle")],

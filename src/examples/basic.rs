@@ -1,15 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{Encloser, Operator, SyntaxContext, SyntaxGraph};
-
-pub fn standard_sexp_whitespace_chars() -> Vec<String> {
-  vec![
-    " ".to_string(),
-    "\n".to_string(),
-    "\t".to_string(),
-    "\r".to_string(),
-  ]
-}
+use crate::{
+  standard_whitespace_chars, Encloser, Operator, SyntaxContext, SyntaxGraph,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SexpEncloser;
@@ -49,7 +42,7 @@ pub fn sexp_graph<'g>() -> SexpGraph {
     vec![SexpEncloser],
     vec![],
     None,
-    standard_sexp_whitespace_chars(),
+    standard_whitespace_chars(),
   );
   SyntaxGraph::new(
     (),
