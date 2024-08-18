@@ -4,7 +4,7 @@ A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
 high priority:
-* BUG: Parsing never finishes when there are multiple top-level forms in grammars with operators that consume to the left
+* BUG: pure suffix ops always cause an error
 * pretty printing
 * generate info necessary for coloring text
 * have a flag to treat certain context tags as comments

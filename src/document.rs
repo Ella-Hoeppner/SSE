@@ -6,6 +6,7 @@ use crate::{
   Encloser, Operator, ParseError, Parser, Sexp, SyntaxGraph,
 };
 
+#[derive(Debug)]
 pub struct Document<
   't,
   C: Clone + Debug + PartialEq + Eq + Hash,

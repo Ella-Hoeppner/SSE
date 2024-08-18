@@ -38,7 +38,7 @@ mod core_tests {
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
     },
     syntax::EncloserOrOperator,
-    DocumentSyntaxTree, ParseError, Parser,
+    DocumentSyntaxTree, ParseError, Parser, Sexp,
   };
 
   fn leaf(s: String) -> RawSexp {
@@ -64,6 +64,15 @@ mod core_tests {
       Some("\\".to_string()),
       vec![("", "(", ")")],
       vec![("PLUS", "+", 1, 1)],
+    )
+  }
+
+  fn question_mark_sexp_graph<'g>() -> StringTaggedSyntaxGraph<'g> {
+    StringTaggedSyntaxGraph::contextless_from_descriptions(
+      standard_whitespace_chars(),
+      Some("\\".to_string()),
+      vec![("", "(", ")")],
+      vec![("QMARK", "?", 1, 0)],
     )
   }
 
@@ -238,6 +247,17 @@ mod core_tests {
       Ok(Some(inner(vec![
         leaf("QUOTE".to_string()),
         leaf("hello!".to_string())
+      ])))
+    );
+  }
+
+  #[test]
+  fn suffix_op() {
+    assert_eq!(
+      Parser::new(question_mark_sexp_graph(), "hello?").read_next_sexp(),
+      Ok(Some(inner(vec![
+        leaf("QMARK".to_string()),
+        leaf("hello".to_string())
       ])))
     );
   }
@@ -748,7 +768,7 @@ mod core_tests {
         .unwrap()
     );
     assert_eq!(
-      RawSexp::from(doc.get_subtree(&[0]).unwrap().clone()),
+      RawSexp::from(doc.get_subtree(&[1]).unwrap().clone()),
       Parser::new(plus_sexp_graph(), "b")
         .read_next_sexp()
         .unwrap()
@@ -928,7 +948,6 @@ mod core_tests {
       "(* (+ 1 2)\n   3\n   4)\n",
     )
     .unwrap();
-    let graphemes: Vec<_> = doc.text.graphemes(true).collect();
     for i in 0..doc.text.len() {
       let (row, col) = doc.index_to_row_and_col(i).unwrap();
       assert_eq!(doc.row_and_col_to_index(row, col), Ok(i));

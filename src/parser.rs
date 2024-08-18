@@ -3,6 +3,7 @@ use crate::{
   SyntaxGraph,
 };
 use std::{fmt::Debug, hash::Hash};
+use take_mut::take;
 
 #[derive(Debug, Clone)]
 pub struct Parser<
@@ -64,12 +65,19 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
         }
       }
     }
-    Ok(if let Some(sexp) = self.parsed_top_level_sexps.pop() {
-      self.already_parsed_index = sexp.range().end;
-      Some(sexp)
+    if self.parsed_top_level_sexps.is_empty() {
+      Ok(None)
     } else {
-      None
-    })
+      self.already_parsed_index =
+        self.parsed_top_level_sexps.last().unwrap().range().end;
+      let mut first_sexp = None;
+      take(&mut self.parsed_top_level_sexps, |parsed_top_level_sexps| {
+        let mut iter = parsed_top_level_sexps.into_iter();
+        first_sexp = iter.next();
+        iter.collect()
+      });
+      Ok(first_sexp)
+    }
   }
   pub fn read_all(
     &mut self,
