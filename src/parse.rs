@@ -316,6 +316,14 @@ impl<
               leftward_args,
             ));
             skip_n_chars!(op_marker.len());
+            if operator.right_args() == 0 {
+              if let Some(completed_sexp) = self.close_sexp(character_index + 1)
+              {
+                let mut top_level_sexps = self.inherited_top_level_sexps;
+                top_level_sexps.push(completed_sexp);
+                return Ok(Ok(top_level_sexps));
+              }
+            }
             continue 'outer;
           }
         }

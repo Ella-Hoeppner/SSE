@@ -4,7 +4,6 @@ A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
 high priority:
-* BUG: pure suffix ops always cause an error
 * pretty printing
 * generate info necessary for coloring text
 * have a flag to treat certain context tags as comments
