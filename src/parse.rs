@@ -1,12 +1,9 @@
-use std::{
-  fmt::{Debug, Display},
-  hash::Hash,
-};
+use std::fmt::{Debug, Display};
 
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
-  syntax::{Encloser, EncloserOrOperator, Operator, SyntaxGraph},
+  syntax::{Context, Encloser, EncloserOrOperator, Operator, SyntaxGraph},
   DocumentSyntaxTree,
 };
 
@@ -39,13 +36,7 @@ impl Display for ParseError {
   }
 }
 
-pub(crate) struct Parse<
-  't,
-  'g,
-  C: Clone + Debug + PartialEq + Eq + Hash,
-  E: Encloser,
-  O: Operator,
-> {
+pub(crate) struct Parse<'t, 'g, C: Context, E: Encloser, O: Operator> {
   text: &'t str,
   inherited_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
   syntax_graph: &'g SyntaxGraph<C, E, O>,
@@ -56,14 +47,7 @@ pub(crate) struct Parse<
   )>,
 }
 
-impl<
-    't,
-    'g,
-    C: Clone + Debug + PartialEq + Eq + Hash,
-    E: Encloser,
-    O: Operator,
-  > Parse<'t, 'g, C, E, O>
-{
+impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
   pub(crate) fn new(
     syntax_graph: &'g SyntaxGraph<C, E, O>,
     inherited_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,

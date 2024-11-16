@@ -1,11 +1,22 @@
-use crate::{Encloser, Operator, SyntaxContext, SyntaxGraph};
+use crate::{syntax::Context, Encloser, Operator, SyntaxContext, SyntaxGraph};
 use std::{fmt::Debug, hash::Hash};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CljContext {
   Default,
   String,
-  Comment,
+  UnstructuredComment,
+  StructuredComment,
+}
+
+impl Context for CljContext {
+  fn is_comment(&self) -> bool {
+    use CljContext::*;
+    match self {
+      UnstructuredComment | StructuredComment => true,
+      _ => false,
+    }
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -119,49 +130,48 @@ impl Operator for CljOperator {
 pub type CljSyntaxGraph = SyntaxGraph<CljContext, CljEncloser, CljOperator>;
 
 pub fn clj_graph() -> CljSyntaxGraph {
+  let default_context = SyntaxContext::new(
+    vec![
+      CljEncloser::List,
+      CljEncloser::Vector,
+      CljEncloser::HashMap,
+      CljEncloser::HashSet,
+      CljEncloser::FnLiteral,
+      CljEncloser::String,
+      CljEncloser::Regex,
+      CljEncloser::LineComment,
+      CljEncloser::BlockComment,
+    ],
+    vec![
+      CljOperator::Metadata,
+      CljOperator::Quote,
+      CljOperator::SyntaxQuote,
+      CljOperator::Unquote,
+      CljOperator::UnquoteSplice,
+      CljOperator::Deref,
+      CljOperator::FormComment,
+    ],
+    None,
+    vec![
+      " ".to_string(),
+      "\n".to_string(),
+      "\t".to_string(),
+      "\r".to_string(),
+    ],
+  );
   CljSyntaxGraph::new(
     CljContext::Default,
     [
-      (
-        CljContext::Default,
-        SyntaxContext::new(
-          vec![
-            CljEncloser::List,
-            CljEncloser::Vector,
-            CljEncloser::HashMap,
-            CljEncloser::HashSet,
-            CljEncloser::FnLiteral,
-            CljEncloser::String,
-            CljEncloser::Regex,
-            CljEncloser::LineComment,
-            CljEncloser::BlockComment,
-          ],
-          vec![
-            CljOperator::Metadata,
-            CljOperator::Quote,
-            CljOperator::SyntaxQuote,
-            CljOperator::Unquote,
-            CljOperator::UnquoteSplice,
-            CljOperator::Deref,
-            CljOperator::FormComment,
-          ],
-          None,
-          vec![
-            " ".to_string(),
-            "\n".to_string(),
-            "\t".to_string(),
-            "\r".to_string(),
-          ],
-        ),
-      ),
+      (CljContext::Default, default_context.clone()),
       (
         CljContext::String,
         SyntaxContext::new(vec![], vec![], Some('\\'.to_string()), vec![]),
       ),
       (
-        CljContext::Comment,
+        CljContext::UnstructuredComment,
         SyntaxContext::new(vec![], vec![], None, vec![]),
       ),
+      (CljContext::StructuredComment, default_context),
     ]
     .into(),
     [
@@ -170,8 +180,8 @@ pub fn clj_graph() -> CljSyntaxGraph {
       (CljEncloser::HashMap, CljContext::Default),
       (CljEncloser::HashSet, CljContext::Default),
       (CljEncloser::FnLiteral, CljContext::Default),
-      (CljEncloser::LineComment, CljContext::Comment),
-      (CljEncloser::BlockComment, CljContext::Comment),
+      (CljEncloser::LineComment, CljContext::UnstructuredComment),
+      (CljEncloser::BlockComment, CljContext::UnstructuredComment),
       (CljEncloser::Regex, CljContext::String),
       (CljEncloser::String, CljContext::String),
     ]
@@ -184,7 +194,7 @@ pub fn clj_graph() -> CljSyntaxGraph {
       (CljOperator::Unquote, CljContext::Default),
       (CljOperator::UnquoteSplice, CljContext::Default),
       (CljOperator::Deref, CljContext::Default),
-      (CljOperator::FormComment, CljContext::Default),
+      (CljOperator::FormComment, CljContext::StructuredComment),
     ]
     .into_iter()
     .collect(),

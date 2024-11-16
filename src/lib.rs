@@ -1,3 +1,5 @@
+#![feature(assert_matches)]
+
 mod ast;
 pub mod document;
 pub mod examples;
@@ -27,12 +29,15 @@ pub fn standard_whitespace_chars() -> Vec<String> {
 
 #[cfg(test)]
 mod core_tests {
-  use unicode_segmentation::UnicodeSegmentation;
+  use std::assert_matches::assert_matches;
 
   use crate::{
     ast::RawSexp,
     document::{Document, InvalidDocumentCharPos, InvalidDocumentIndex},
-    examples::basic::{sexp_graph, SexpEncloser},
+    examples::{
+      basic::{sexp_graph, SexpEncloser},
+      psuedo_clj::{clj_graph, CljEncloser},
+    },
     standard_whitespace_chars,
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
@@ -951,6 +956,26 @@ mod core_tests {
     for i in 0..doc.text.len() {
       let (row, col) = doc.index_to_row_and_col(i).unwrap();
       assert_eq!(doc.row_and_col_to_index(row, col), Ok(i));
+    }
+  }
+
+  #[test]
+  fn strip_comments() {
+    let mut doc = Document::from_text_with_syntax(
+      clj_graph(),
+      "#_(hello!!) (+ 1 2 #_3) ;(testing\n",
+    )
+    .unwrap();
+    doc.strip_comments();
+    assert!(doc.syntax_trees.len() == 1);
+    assert_matches!(
+      doc.syntax_trees[0],
+      Sexp::Inner((_, EncloserOrOperator::Encloser(CljEncloser::List)), _)
+    );
+    if let Sexp::Inner((_, _), children) = doc.syntax_trees.remove(0) {
+      assert!(children.len() == 3)
+    } else {
+      unreachable!()
     }
   }
 }

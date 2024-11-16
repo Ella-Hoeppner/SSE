@@ -6,9 +6,7 @@ A parser for **S**ugared **S**-**E**xpressions.
 high priority:
 * pretty printing
 * generate info necessary for coloring text
-* have a flag to treat certain context tags as comments
-  * have a function for removing all of these from an AST
-  * these shouldn't be included in the left/right consumption counts for operators
+* don't include comments in left/right consumption counts for operators
 
 low priority:
 * support for custom pretty-printing/formatting logic

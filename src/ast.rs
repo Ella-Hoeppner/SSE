@@ -1,6 +1,8 @@
 use std::fmt::Debug;
 use std::{fmt, ops::Range};
 
+use crate::syntax::Context;
+use crate::SyntaxGraph;
 use crate::{syntax::EncloserOrOperator, Encloser, Operator};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -142,6 +144,26 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       Some(reverse_path)
     } else {
       None
+    }
+  }
+  pub fn filter_comments<C: Context>(
+    self,
+    syntax_graph: &SyntaxGraph<C, E, O>,
+  ) -> Option<Self> {
+    match self {
+      Sexp::Inner((span, encloser_or_operator), children) => (!syntax_graph
+        .get_context_tag(&encloser_or_operator)
+        .is_comment())
+      .then(|| {
+        Sexp::Inner(
+          (span, encloser_or_operator),
+          children
+            .into_iter()
+            .filter_map(|child| child.filter_comments(syntax_graph))
+            .collect(),
+        )
+      }),
+      leaf => Some(leaf),
     }
   }
 }

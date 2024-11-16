@@ -1,5 +1,21 @@
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
+pub trait Context: Clone + Debug + PartialEq + Eq + Hash {
+  fn is_comment(&self) -> bool;
+}
+
+impl Context for () {
+  fn is_comment(&self) -> bool {
+    false
+  }
+}
+
+impl Context for &str {
+  fn is_comment(&self) -> bool {
+    false
+  }
+}
+
 pub trait Encloser: Debug + Clone + Eq + Hash {
   fn id_str(&self) -> &str;
   fn opening_encloser_str(&self) -> &str;
@@ -61,20 +77,14 @@ impl<E: Encloser, O: Operator> EncloserOrOperator<E, O> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SyntaxGraph<
-  C: Clone + Debug + PartialEq + Eq + Hash,
-  E: Encloser,
-  O: Operator,
-> {
+pub struct SyntaxGraph<C: Context, E: Encloser, O: Operator> {
   pub(crate) root: C,
   contexts: HashMap<C, SyntaxContext<E, O>>,
   encloser_contexts: HashMap<E, C>,
   operator_contexts: HashMap<O, C>,
 }
 
-impl<C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
-  SyntaxGraph<C, E, O>
-{
+impl<C: Context, E: Encloser, O: Operator> SyntaxGraph<C, E, O> {
   pub fn new(
     root: C,
     contexts: HashMap<C, SyntaxContext<E, O>>,

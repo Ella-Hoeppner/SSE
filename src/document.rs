@@ -1,22 +1,20 @@
-use std::{fmt::Debug, hash::Hash, ops::Range};
+use std::{fmt::Debug, ops::Range};
+use take_mut::take;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
-  ast::InvalidTreePath, syntax::EncloserOrOperator, DocumentSyntaxTree,
-  Encloser, Operator, ParseError, Parser, Sexp, SyntaxGraph,
+  ast::InvalidTreePath,
+  syntax::{Context, EncloserOrOperator},
+  DocumentSyntaxTree, Encloser, Operator, ParseError, Parser, Sexp,
+  SyntaxGraph,
 };
 
 #[derive(Debug)]
-pub struct Document<
-  't,
-  C: Clone + Debug + PartialEq + Eq + Hash,
-  E: Encloser,
-  O: Operator,
-> {
+pub struct Document<'t, C: Context, E: Encloser, O: Operator> {
   pub text: &'t str,
   grapheme_indeces: Vec<usize>,
   newline_indeces: Vec<usize>,
-  syntax_graph: SyntaxGraph<C, E, O>,
+  pub syntax_graph: SyntaxGraph<C, E, O>,
   pub syntax_trees: Vec<DocumentSyntaxTree<E, O>>,
 }
 
@@ -26,8 +24,8 @@ pub struct InvalidDocumentIndex;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InvalidDocumentCharPos;
 
-impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
-  TryFrom<Parser<'t, C, E, O>> for Document<'t, C, E, O>
+impl<'t, C: Context, E: Encloser, O: Operator> TryFrom<Parser<'t, C, E, O>>
+  for Document<'t, C, E, O>
 {
   type Error = ParseError;
 
@@ -60,9 +58,7 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
   }
 }
 
-impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
-  Document<'t, C, E, O>
-{
+impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
   pub fn from_text_with_syntax(
     syntax_graph: SyntaxGraph<C, E, O>,
     text: &'t str,
@@ -312,5 +308,13 @@ impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
     } else {
       Err(InvalidDocumentIndex)
     }
+  }
+  pub fn strip_comments(&mut self) {
+    take(&mut self.syntax_trees, |syntax_trees| {
+      syntax_trees
+        .into_iter()
+        .filter_map(|tree| tree.filter_comments(&self.syntax_graph))
+        .collect()
+    })
   }
 }

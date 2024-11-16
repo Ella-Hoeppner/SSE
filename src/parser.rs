@@ -1,17 +1,12 @@
 use crate::{
-  parse::Parse, DocumentSyntaxTree, Encloser, Operator, ParseError, RawSexp,
-  SyntaxGraph,
+  parse::Parse, syntax::Context, DocumentSyntaxTree, Encloser, Operator,
+  ParseError, RawSexp, SyntaxGraph,
 };
-use std::{fmt::Debug, hash::Hash};
+use std::fmt::Debug;
 use take_mut::take;
 
 #[derive(Debug, Clone)]
-pub struct Parser<
-  't,
-  C: Clone + Debug + PartialEq + Eq + Hash,
-  E: Encloser,
-  O: Operator,
-> {
+pub struct Parser<'t, C: Context, E: Encloser, O: Operator> {
   pub(crate) text: &'t str,
   pub(crate) syntax_graph: SyntaxGraph<C, E, O>,
   parsed_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
@@ -19,9 +14,7 @@ pub struct Parser<
   already_parsed_index: usize,
 }
 
-impl<'t, C: Clone + Debug + PartialEq + Eq + Hash, E: Encloser, O: Operator>
-  Parser<'t, C, E, O>
-{
+impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
   pub fn new(syntax_graph: SyntaxGraph<C, E, O>, text: &'t str) -> Self {
     Self {
       text,
