@@ -13,6 +13,7 @@ pub use ast::Sexp;
 pub use ast::SyntaxTree;
 pub use parse::ParseError;
 pub use parser::Parser;
+pub use syntax::Context;
 pub use syntax::Encloser;
 pub use syntax::Operator;
 pub use syntax::SyntaxContext;
