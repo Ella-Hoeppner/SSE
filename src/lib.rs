@@ -7,10 +7,10 @@ mod parse;
 mod parser;
 pub mod str_tagged;
 pub mod syntax;
-pub use ast::DocumentSyntaxTree;
 pub use ast::RawSexp;
 pub use ast::Sexp;
 pub use ast::SyntaxTree;
+pub use document::DocumentSyntaxTree;
 pub use parse::ParseError;
 pub use parser::Parser;
 pub use syntax::Context;
@@ -34,7 +34,9 @@ mod core_tests {
 
   use crate::{
     ast::RawSexp,
-    document::{Document, InvalidDocumentCharPos, InvalidDocumentIndex},
+    document::{
+      Document, DocumentPosition, InvalidDocumentCharPos, InvalidDocumentIndex,
+    },
     examples::{
       basic::{sexp_graph, SexpEncloser},
       psuedo_clj::{clj_graph, CljEncloser},
@@ -603,11 +605,23 @@ mod core_tests {
     assert_eq!(
       Parser::new(sexp_graph(), "(+ 1 2)").read_next(),
       Ok(Some(DocumentSyntaxTree::Inner(
-        (0..7, EncloserOrOperator::Encloser(SexpEncloser)),
+        (
+          DocumentPosition::new(0..7, vec![] /*todo!*/),
+          EncloserOrOperator::Encloser(SexpEncloser)
+        ),
         vec![
-          DocumentSyntaxTree::Leaf(1..2, "+".to_string()),
-          DocumentSyntaxTree::Leaf(3..4, "1".to_string()),
-          DocumentSyntaxTree::Leaf(5..6, "2".to_string())
+          DocumentSyntaxTree::Leaf(
+            DocumentPosition::new(1..2, vec![] /*todo!*/),
+            "+".to_string()
+          ),
+          DocumentSyntaxTree::Leaf(
+            DocumentPosition::new(3..4, vec![] /*todo!*/),
+            "1".to_string()
+          ),
+          DocumentSyntaxTree::Leaf(
+            DocumentPosition::new(5..6, vec![] /*todo!*/),
+            "2".to_string()
+          )
         ]
       )))
     )
@@ -618,18 +632,39 @@ mod core_tests {
     assert_eq!(
       Parser::new(sexp_graph(), "(* (+ 1 2) 3)").read_next(),
       Ok(Some(DocumentSyntaxTree::Inner(
-        (0..13, EncloserOrOperator::Encloser(SexpEncloser)),
+        (
+          DocumentPosition::new(0..13, vec![] /*todo!*/),
+          EncloserOrOperator::Encloser(SexpEncloser)
+        ),
         vec![
-          DocumentSyntaxTree::Leaf(1..2, "*".to_string()),
+          DocumentSyntaxTree::Leaf(
+            DocumentPosition::new(1..2, vec![] /*todo!*/),
+            "*".to_string()
+          ),
           DocumentSyntaxTree::Inner(
-            (3..10, EncloserOrOperator::Encloser(SexpEncloser)),
+            (
+              DocumentPosition::new(3..10, vec![] /*todo!*/),
+              EncloserOrOperator::Encloser(SexpEncloser)
+            ),
             vec![
-              DocumentSyntaxTree::Leaf(4..5, "+".to_string()),
-              DocumentSyntaxTree::Leaf(6..7, "1".to_string()),
-              DocumentSyntaxTree::Leaf(8..9, "2".to_string())
+              DocumentSyntaxTree::Leaf(
+                DocumentPosition::new(4..5, vec![] /*todo!*/),
+                "+".to_string()
+              ),
+              DocumentSyntaxTree::Leaf(
+                DocumentPosition::new(6..7, vec![] /*todo!*/),
+                "1".to_string()
+              ),
+              DocumentSyntaxTree::Leaf(
+                DocumentPosition::new(8..9, vec![] /*todo!*/),
+                "2".to_string()
+              )
             ]
           ),
-          DocumentSyntaxTree::Leaf(11..12, "3".to_string()),
+          DocumentSyntaxTree::Leaf(
+            DocumentPosition::new(11..12, vec![] /*todo!*/),
+            "3".to_string()
+          ),
         ]
       )))
     )
@@ -641,14 +676,17 @@ mod core_tests {
       Parser::new(multi_bracket_graph(), "(union #{1 20} #{})").read_next(),
       Ok(Some(DocumentSyntaxTree::Inner(
         (
-          0..19,
+          DocumentPosition::new(0..19, vec![] /*todo!*/),
           EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
         ),
         vec![
-          DocumentSyntaxTree::Leaf(1..6, "union".to_string()),
+          DocumentSyntaxTree::Leaf(
+            DocumentPosition::new(1..6, vec![] /*todo!*/),
+            "union".to_string()
+          ),
           DocumentSyntaxTree::Inner(
             (
-              7..14,
+              DocumentPosition::new(7..14, vec![] /*todo!*/),
               EncloserOrOperator::Encloser(StringTaggedEncloser::new(
                 ":HASH_CURLY",
                 "#{",
@@ -656,13 +694,19 @@ mod core_tests {
               ))
             ),
             vec![
-              DocumentSyntaxTree::Leaf(9..10, "1".to_string()),
-              DocumentSyntaxTree::Leaf(11..13, "20".to_string())
+              DocumentSyntaxTree::Leaf(
+                DocumentPosition::new(9..10, vec![] /*todo!*/),
+                "1".to_string()
+              ),
+              DocumentSyntaxTree::Leaf(
+                DocumentPosition::new(11..13, vec![] /*todo!*/),
+                "20".to_string()
+              )
             ]
           ),
           DocumentSyntaxTree::Inner(
             (
-              15..18,
+              DocumentPosition::new(15..18, vec![] /*todo!*/),
               EncloserOrOperator::Encloser(StringTaggedEncloser::new(
                 ":HASH_CURLY",
                 "#{",
@@ -682,19 +726,25 @@ mod core_tests {
       Parser::new(plus_sexp_graph(), "(1+2)").read_next(),
       Ok(Some(DocumentSyntaxTree::Inner(
         (
-          0..5,
+          DocumentPosition::new(0..5, vec![] /*todo!*/),
           EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
         ),
         vec![DocumentSyntaxTree::Inner(
           (
-            1..4,
+            DocumentPosition::new(1..4, vec![] /*todo!*/),
             EncloserOrOperator::Operator(StringTaggedOperator::new(
               "PLUS", "+", 1, 1
             ))
           ),
           vec![
-            DocumentSyntaxTree::Leaf(1..2, "1".to_string()),
-            DocumentSyntaxTree::Leaf(3..4, "2".to_string())
+            DocumentSyntaxTree::Leaf(
+              DocumentPosition::new(1..2, vec![] /*todo!*/),
+              "1".to_string()
+            ),
+            DocumentSyntaxTree::Leaf(
+              DocumentPosition::new(3..4, vec![] /*todo!*/),
+              "2".to_string()
+            )
           ]
         )]
       )))
@@ -711,6 +761,7 @@ mod core_tests {
         .read_next()
         .unwrap()
         .unwrap()
+        .calculate_paths(vec![0])
     );
     assert_eq!(
       RawSexp::from(doc.get_subtree(&[0, 0]).unwrap().clone()),
@@ -978,5 +1029,33 @@ mod core_tests {
     } else {
       unreachable!()
     }
+  }
+
+  #[test]
+  fn document_paths() {
+    let doc =
+      Document::from_text_with_syntax(sexp_graph(), "(+ 1 2 (* 3 4)) 5")
+        .unwrap();
+    assert_eq!(
+      doc
+        .syntax_trees
+        .iter()
+        .map(|tree| tree.position().path.clone())
+        .collect::<Vec<Vec<usize>>>(),
+      vec![vec![0], vec![1]]
+    );
+    let first_tree_subtrees =
+      if let Sexp::Inner(_, children) = doc.syntax_trees[0].clone() {
+        children
+      } else {
+        panic!();
+      };
+    assert_eq!(
+      first_tree_subtrees
+        .iter()
+        .map(|tree| tree.position().path.clone())
+        .collect::<Vec<Vec<usize>>>(),
+      vec![vec![0, 0], vec![0, 1], vec![0, 2], vec![0, 3]]
+    );
   }
 }

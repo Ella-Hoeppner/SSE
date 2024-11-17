@@ -1,8 +1,6 @@
+use std::fmt;
 use std::fmt::Debug;
-use std::{fmt, ops::Range};
 
-use crate::syntax::Context;
-use crate::SyntaxGraph;
 use crate::{syntax::EncloserOrOperator, Encloser, Operator};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -94,97 +92,5 @@ impl<E: Encloser, O: Operator> From<SyntaxTree<E, O>> for RawSexp {
         }
       }),
     }
-  }
-}
-
-pub type DocumentSyntaxTree<E, O> =
-  Sexp<Range<usize>, (Range<usize>, EncloserOrOperator<E, O>)>;
-
-impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
-  pub fn range(&self) -> &Range<usize> {
-    match self {
-      Sexp::Leaf(range, _) => range,
-      Sexp::Inner((range, _), _) => range,
-    }
-  }
-  pub fn encloses(&self, selection: &Range<usize>) -> bool {
-    self.range().start <= selection.start && self.range().end >= selection.end
-  }
-  pub fn enclosed_by(&self, selection: &Range<usize>) -> bool {
-    self.range().start >= selection.start && self.range().end <= selection.end
-  }
-  pub(crate) fn innermost_predicate_reverse_path(
-    &self,
-    predicate: &impl Fn(&Self) -> bool,
-  ) -> Option<Vec<usize>> {
-    predicate(self).then(|| match self {
-      Sexp::Leaf(_, _) => vec![],
-      Sexp::Inner(_, children) => children
-        .iter()
-        .enumerate()
-        .find_map(|(i, child)| {
-          child.innermost_predicate_reverse_path(predicate).map(
-            |mut reverse_path| {
-              reverse_path.push(i);
-              reverse_path
-            },
-          )
-        })
-        .unwrap_or(vec![]),
-    })
-  }
-  pub fn innermost_predicate_path(
-    &self,
-    predicate: &impl Fn(&Self) -> bool,
-  ) -> Option<Vec<usize>> {
-    if let Some(mut reverse_path) =
-      self.innermost_predicate_reverse_path(predicate)
-    {
-      reverse_path.reverse();
-      Some(reverse_path)
-    } else {
-      None
-    }
-  }
-  pub fn filter_comments<C: Context>(
-    self,
-    syntax_graph: &SyntaxGraph<C, E, O>,
-  ) -> Option<Self> {
-    match self {
-      Sexp::Inner((span, encloser_or_operator), children) => (!syntax_graph
-        .get_context_tag(&encloser_or_operator)
-        .is_comment())
-      .then(|| {
-        Sexp::Inner(
-          (span, encloser_or_operator),
-          children
-            .into_iter()
-            .filter_map(|child| child.filter_comments(syntax_graph))
-            .collect(),
-        )
-      }),
-      leaf => Some(leaf),
-    }
-  }
-}
-
-impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>
-  for SyntaxTree<E, O>
-{
-  fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
-    match tree {
-      DocumentSyntaxTree::Leaf(_, leaf) => SyntaxTree::Leaf((), leaf),
-      DocumentSyntaxTree::Inner((_, encloser_or_opener), sub_sexps) => {
-        SyntaxTree::Inner(encloser_or_opener, {
-          sub_sexps.into_iter().map(SyntaxTree::from).collect()
-        })
-      }
-    }
-  }
-}
-
-impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>> for RawSexp {
-  fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
-    SyntaxTree::from(tree).into()
   }
 }

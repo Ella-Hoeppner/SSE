@@ -3,8 +3,8 @@ use std::fmt::{Debug, Display};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
+  document::{DocumentPosition, DocumentSyntaxTree},
   syntax::{Context, Encloser, EncloserOrOperator, Operator, SyntaxGraph},
-  DocumentSyntaxTree,
 };
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -99,22 +99,13 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
       .open_sexps
       .pop()
       .expect("called close_sexp with no open partial sexp");
-    self.push_closed_sexp(match encloser_or_operator {
-      EncloserOrOperator::Encloser(encloser) => DocumentSyntaxTree::Inner(
-        (
-          opening_index..closing_index,
-          EncloserOrOperator::Encloser(encloser),
-        ),
-        sub_sexps,
+    self.push_closed_sexp(DocumentSyntaxTree::Inner(
+      (
+        DocumentPosition::new(opening_index..closing_index, vec![]),
+        encloser_or_operator,
       ),
-      EncloserOrOperator::Operator(operator) => DocumentSyntaxTree::Inner(
-        (
-          opening_index..closing_index,
-          EncloserOrOperator::Operator(operator),
-        ),
-        sub_sexps,
-      ),
-    })
+      sub_sexps,
+    ))
   }
   fn push_closed_sexp(
     &mut self,
@@ -123,7 +114,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
     if let Some((_, encloser_or_operator, subsexps)) =
       self.open_sexps.last_mut()
     {
-      let end = sexp.range().end;
+      let end = sexp.position().end();
       subsexps.push(sexp);
       if let EncloserOrOperator::Operator(operator) = encloser_or_operator {
         let left_args = operator.left_args();
@@ -164,7 +155,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
     let beginning_index = self
       .inherited_top_level_sexps
       .last()
-      .map(|syntax_tree| syntax_tree.range().end)
+      .map(|syntax_tree| syntax_tree.position().end())
       .unwrap_or(already_parsed_index);
     if beginning_index >= self.text.len() {
       return Ok(Err(self.inherited_top_level_sexps));
@@ -188,7 +179,10 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
           if let Some(terminal_beginning) = current_terminal_beginning {
             if let Some(completed_sexp) =
               self.push_closed_sexp(DocumentSyntaxTree::Leaf(
-                terminal_beginning..character_index,
+                DocumentPosition::new(
+                  terminal_beginning..character_index,
+                  vec![],
+                ),
                 self.text[terminal_beginning..character_index].to_string(),
               ))
             {
@@ -294,7 +288,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
             self.open_sexps.push((
               leftward_args
                 .first()
-                .map(|first_arg| first_arg.range().start)
+                .map(|first_arg| first_arg.position().start())
                 .unwrap_or(character_index),
               EncloserOrOperator::Operator(operator.clone()),
               leftward_args,

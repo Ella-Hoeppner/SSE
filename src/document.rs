@@ -5,9 +5,156 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::{
   ast::InvalidTreePath,
   syntax::{Context, EncloserOrOperator},
-  DocumentSyntaxTree, Encloser, Operator, ParseError, Parser, Sexp,
-  SyntaxGraph,
+  Encloser, Operator, ParseError, Parser, RawSexp, Sexp, SyntaxGraph,
+  SyntaxTree,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DocumentPosition {
+  pub span: Range<usize>,
+  pub path: Vec<usize>,
+}
+impl DocumentPosition {
+  pub fn new(span: Range<usize>, path: Vec<usize>) -> Self {
+    Self { span, path }
+  }
+  pub fn start(&self) -> usize {
+    self.span.start
+  }
+  pub fn end(&self) -> usize {
+    self.span.end
+  }
+}
+
+pub type DocumentSyntaxTree<E, O> =
+  Sexp<DocumentPosition, (DocumentPosition, EncloserOrOperator<E, O>)>;
+
+impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
+  pub fn position(&self) -> &DocumentPosition {
+    match self {
+      Sexp::Leaf(position, _) => position,
+      Sexp::Inner((position, _), _) => position,
+    }
+  }
+  pub fn encloses(&self, selection: &Range<usize>) -> bool {
+    self.position().start() <= selection.start
+      && self.position().end() >= selection.end
+  }
+  pub fn enclosed_by(&self, selection: &Range<usize>) -> bool {
+    self.position().start() >= selection.start
+      && self.position().end() <= selection.end
+  }
+  pub(crate) fn innermost_predicate_reverse_path(
+    &self,
+    predicate: &impl Fn(&Self) -> bool,
+  ) -> Option<Vec<usize>> {
+    predicate(self).then(|| match self {
+      Sexp::Leaf(_, _) => vec![],
+      Sexp::Inner(_, children) => children
+        .iter()
+        .enumerate()
+        .find_map(|(i, child)| {
+          child.innermost_predicate_reverse_path(predicate).map(
+            |mut reverse_path| {
+              reverse_path.push(i);
+              reverse_path
+            },
+          )
+        })
+        .unwrap_or(vec![]),
+    })
+  }
+  pub fn innermost_predicate_path(
+    &self,
+    predicate: &impl Fn(&Self) -> bool,
+  ) -> Option<Vec<usize>> {
+    if let Some(mut reverse_path) =
+      self.innermost_predicate_reverse_path(predicate)
+    {
+      reverse_path.reverse();
+      Some(reverse_path)
+    } else {
+      None
+    }
+  }
+  pub fn calculate_paths(self, parent_path: Vec<usize>) -> Self {
+    use Sexp::*;
+    match self {
+      Leaf(DocumentPosition { span, .. }, leaf) => Leaf(
+        DocumentPosition {
+          span,
+          path: parent_path,
+        },
+        leaf,
+      ),
+      Inner(
+        (DocumentPosition { span, .. }, encloser_or_operator),
+        children,
+      ) => {
+        let children = children
+          .into_iter()
+          .enumerate()
+          .map(|(i, child)| {
+            let mut sub_path = parent_path.clone();
+            sub_path.push(i);
+            child.calculate_paths(sub_path)
+          })
+          .collect();
+        Inner(
+          (
+            DocumentPosition {
+              span,
+              path: parent_path,
+            },
+            encloser_or_operator,
+          ),
+          children,
+        )
+      }
+    }
+  }
+  pub fn filter_comments<C: Context>(
+    self,
+    syntax_graph: &SyntaxGraph<C, E, O>,
+  ) -> Option<Self> {
+    match self {
+      Sexp::Inner((span, encloser_or_operator), children) => (!syntax_graph
+        .get_context_tag(&encloser_or_operator)
+        .is_comment())
+      .then(|| {
+        Sexp::Inner(
+          (span, encloser_or_operator),
+          children
+            .into_iter()
+            .filter_map(|child| child.filter_comments(syntax_graph))
+            .collect(),
+        )
+      }),
+      leaf => Some(leaf),
+    }
+  }
+}
+
+impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>
+  for SyntaxTree<E, O>
+{
+  fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
+    match tree {
+      DocumentSyntaxTree::Leaf(_, leaf) => SyntaxTree::Leaf((), leaf),
+      DocumentSyntaxTree::Inner((_, encloser_or_opener), sub_sexps) => {
+        SyntaxTree::Inner(encloser_or_opener, {
+          sub_sexps.into_iter().map(SyntaxTree::from).collect()
+        })
+      }
+    }
+  }
+}
+
+impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>> for RawSexp {
+  fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
+    SyntaxTree::from(tree).into()
+  }
+}
 
 #[derive(Debug)]
 pub struct Document<'t, C: Context, E: Encloser, O: Operator> {
@@ -52,7 +199,11 @@ impl<'t, C: Context, E: Encloser, O: Operator> TryFrom<Parser<'t, C, E, O>>
           grapheme_indeces,
           newline_indeces,
           syntax_graph: parser.syntax_graph,
-          syntax_trees,
+          syntax_trees: syntax_trees
+            .into_iter()
+            .enumerate()
+            .map(|(i, tree)| tree.calculate_paths(vec![i]))
+            .collect(),
         }
       })
   }
@@ -85,10 +236,10 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
     &self,
     path: &[usize],
   ) -> Result<&'t str, InvalidTreePath> {
-    let range = self.get_subtree(path)?.range();
+    let pos = self.get_subtree(path)?.position();
     Ok(
       &self.text
-        [self.grapheme_indeces[range.start]..self.grapheme_indeces[range.end]],
+        [self.grapheme_indeces[pos.start()]..self.grapheme_indeces[pos.end()]],
     )
   }
   pub fn innermost_predicate_path(
@@ -125,23 +276,23 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
       None
     } else {
       let tree = self.get_subtree(&path).unwrap();
-      if tree.range() == selection {
+      if tree.position().span == *selection {
         if path.len() == 1 {
           if self.syntax_trees.len() < 2 {
             None
           } else {
             Some(
-              self.syntax_trees.first().unwrap().range().start
-                ..self.syntax_trees.last().unwrap().range().end,
+              self.syntax_trees.first().unwrap().position().start()
+                ..self.syntax_trees.last().unwrap().position().end(),
             )
           }
         } else {
           let mut path = path;
           path.pop();
-          Some(self.get_subtree(&path).unwrap().range().clone())
+          Some(self.get_subtree(&path).unwrap().position().span.clone())
         }
       } else {
-        Some(tree.range().clone())
+        Some(tree.position().span.clone())
       }
     }
   }
@@ -157,15 +308,15 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
         .iter()
         .enumerate()
         .rev()
-        .filter_map(|(i, tree)| (tree.range().end < cursor).then(|| i))
+        .filter_map(|(i, tree)| (tree.position().end() < cursor).then(|| i))
         .next()
       {
         enclosing_path.push(preceding_tree_index);
       }
     } else {
       let enclosing_subtree = self.get_subtree(&enclosing_path).unwrap();
-      let start_of_enclosing = enclosing_subtree.range().start;
-      let end_of_enclosing = enclosing_subtree.range().end;
+      let start_of_enclosing = enclosing_subtree.position().start();
+      let end_of_enclosing = enclosing_subtree.position().end();
       if cursor == start_of_enclosing {
         if enclosing_path.is_empty() {
           return cursor;
@@ -182,7 +333,11 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
     if enclosing_path.is_empty() {
       cursor
     } else {
-      self.get_subtree(&enclosing_path).unwrap().range().start
+      self
+        .get_subtree(&enclosing_path)
+        .unwrap()
+        .position()
+        .start()
     }
   }
   pub fn move_cursor_to_end(&self, selection: &Range<usize>) -> usize {
@@ -196,13 +351,13 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
         .syntax_trees
         .iter()
         .enumerate()
-        .filter_map(|(i, tree)| (tree.range().start > cursor).then(|| i))
+        .filter_map(|(i, tree)| (tree.position().start() > cursor).then(|| i))
         .next()
       {
         enclosing_path.push(preceding_tree_index);
       }
     } else {
-      if cursor == self.get_subtree(&enclosing_path).unwrap().range().end {
+      if cursor == self.get_subtree(&enclosing_path).unwrap().position().end() {
         loop {
           match enclosing_path.len() {
             0 => {
@@ -222,7 +377,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
                 _,
               ) = parent_subtree
               {
-                if parent_subtree.range().end == cursor {
+                if parent_subtree.position().end() == cursor {
                   enclosing_path.pop();
                   continue;
                 }
@@ -249,7 +404,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
     if enclosing_path.is_empty() {
       cursor
     } else {
-      self.get_subtree(&enclosing_path).unwrap().range().end
+      self.get_subtree(&enclosing_path).unwrap().position().end()
     }
   }
   pub fn row_and_col_to_index(
