@@ -5,8 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::{
   ast::InvalidTreePath,
   syntax::{Context, EncloserOrOperator},
-  Encloser, Operator, ParseError, Parser, RawSexp, Sexp, SyntaxGraph,
-  SyntaxTree,
+  Ast, Encloser, Operator, ParseError, Parser, RawAst, SyntaxGraph, SyntaxTree,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,13 +26,13 @@ impl DocumentPosition {
 }
 
 pub type DocumentSyntaxTree<E, O> =
-  Sexp<DocumentPosition, (DocumentPosition, EncloserOrOperator<E, O>)>;
+  Ast<DocumentPosition, (DocumentPosition, EncloserOrOperator<E, O>)>;
 
 impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
   pub fn position(&self) -> &DocumentPosition {
     match self {
-      Sexp::Leaf(position, _) => position,
-      Sexp::Inner((position, _), _) => position,
+      Ast::Leaf(position, _) => position,
+      Ast::Inner((position, _), _) => position,
     }
   }
   pub fn encloses(&self, selection: &Range<usize>) -> bool {
@@ -49,8 +48,8 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
     predicate: &impl Fn(&Self) -> bool,
   ) -> Option<Vec<usize>> {
     predicate(self).then(|| match self {
-      Sexp::Leaf(_, _) => vec![],
-      Sexp::Inner(_, children) => children
+      Ast::Leaf(_, _) => vec![],
+      Ast::Inner(_, children) => children
         .iter()
         .enumerate()
         .find_map(|(i, child)| {
@@ -78,7 +77,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
     }
   }
   pub fn calculate_paths(self, parent_path: Vec<usize>) -> Self {
-    use Sexp::*;
+    use Ast::*;
     match self {
       Leaf(DocumentPosition { span, .. }, leaf) => Leaf(
         DocumentPosition {
@@ -118,11 +117,11 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
     syntax_graph: &SyntaxGraph<C, E, O>,
   ) -> Option<Self> {
     match self {
-      Sexp::Inner((span, encloser_or_operator), children) => (!syntax_graph
+      Ast::Inner((span, encloser_or_operator), children) => (!syntax_graph
         .get_context_tag(&encloser_or_operator)
         .is_comment())
       .then(|| {
-        Sexp::Inner(
+        Ast::Inner(
           (span, encloser_or_operator),
           children
             .into_iter()
@@ -141,16 +140,16 @@ impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>
   fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
     match tree {
       DocumentSyntaxTree::Leaf(_, leaf) => SyntaxTree::Leaf((), leaf),
-      DocumentSyntaxTree::Inner((_, encloser_or_opener), sub_sexps) => {
+      DocumentSyntaxTree::Inner((_, encloser_or_opener), sub_Asts) => {
         SyntaxTree::Inner(encloser_or_opener, {
-          sub_sexps.into_iter().map(SyntaxTree::from).collect()
+          sub_Asts.into_iter().map(SyntaxTree::from).collect()
         })
       }
     }
   }
 }
 
-impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>> for RawSexp {
+impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>> for RawAst {
   fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
     SyntaxTree::from(tree).into()
   }
@@ -385,7 +384,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
               let parent = self
                 .get_subtree(&enclosing_path[0..path_length - 1])
                 .unwrap();
-              let sibling_count = if let Sexp::Inner(_, siblings) = parent {
+              let sibling_count = if let Ast::Inner(_, siblings) = parent {
                 siblings.len()
               } else {
                 unreachable!("uh oh")

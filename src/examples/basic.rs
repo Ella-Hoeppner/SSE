@@ -5,8 +5,8 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct SexpEncloser;
-impl Encloser for SexpEncloser {
+pub struct AstEncloser;
+impl Encloser for AstEncloser {
   fn id_str(&self) -> &str {
     ""
   }
@@ -35,11 +35,11 @@ impl Operator for NoOperator {
   }
 }
 
-pub type SexpGraph = SyntaxGraph<(), SexpEncloser, NoOperator>;
+pub type AstGraph = SyntaxGraph<(), AstEncloser, NoOperator>;
 
-pub fn sexp_graph<'g>() -> SexpGraph {
+pub fn Ast_graph<'g>() -> AstGraph {
   let context = SyntaxContext::new(
-    vec![SexpEncloser],
+    vec![AstEncloser],
     vec![],
     None,
     standard_whitespace_chars(),
@@ -47,7 +47,7 @@ pub fn sexp_graph<'g>() -> SexpGraph {
   SyntaxGraph::new(
     (),
     [((), context)].into_iter().collect(),
-    [(SexpEncloser, ())].into_iter().collect(),
+    [(AstEncloser, ())].into_iter().collect(),
     HashMap::new(),
   )
 }

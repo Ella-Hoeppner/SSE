@@ -4,12 +4,12 @@ use std::fmt::Debug;
 use crate::{syntax::EncloserOrOperator, Encloser, Operator};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Sexp<
+pub enum Ast<
   LeafData: Clone + PartialEq + Eq + Debug,
   InnerData: Clone + PartialEq + Eq + Debug,
 > {
   Leaf(LeafData, String),
-  Inner(InnerData, Vec<Sexp<LeafData, InnerData>>),
+  Inner(InnerData, Vec<Ast<LeafData, InnerData>>),
 }
 
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub struct InvalidTreePath;
 impl<
     LeafData: Clone + PartialEq + Eq + Debug,
     InnerData: Clone + PartialEq + Eq + Debug,
-  > Sexp<LeafData, InnerData>
+  > Ast<LeafData, InnerData>
 {
   pub(crate) fn get_subtree_inner(
     &self,
@@ -26,8 +26,8 @@ impl<
   ) -> Result<&Self, InvalidTreePath> {
     if let Some(child_index) = path.next() {
       match self {
-        Sexp::Leaf(_, _) => Err(InvalidTreePath),
-        Sexp::Inner(_, children) => {
+        Ast::Leaf(_, _) => Err(InvalidTreePath),
+        Ast::Inner(_, children) => {
           if let Some(child) = children.get(child_index) {
             child.get_subtree_inner(path)
           } else {
@@ -44,26 +44,26 @@ impl<
   }
 }
 
-pub type RawSexp = Sexp<(), ()>;
-impl RawSexp {
+pub type RawAst = Ast<(), ()>;
+impl RawAst {
   pub fn leaf(s: String) -> Self {
     Self::Leaf((), s)
   }
-  pub fn inner(subexpressions: Vec<RawSexp>) -> Self {
+  pub fn inner(subexpressions: Vec<RawAst>) -> Self {
     Self::Inner((), subexpressions)
   }
 }
 
-impl fmt::Display for RawSexp {
+impl fmt::Display for RawAst {
   fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self {
-      Sexp::Leaf(_, token) => fmt.write_str(token)?,
-      Sexp::Inner(_, sub_expressions) => {
+      Ast::Leaf(_, token) => fmt.write_str(token)?,
+      Ast::Inner(_, sub_expressions) => {
         fmt.write_str("(")?;
         let mut separator = "";
-        for sexp in sub_expressions {
+        for Ast in sub_expressions {
           fmt.write_str(separator)?;
-          fmt.write_str(&sexp.to_string())?;
+          fmt.write_str(&Ast.to_string())?;
           separator = " ";
         }
         fmt.write_str(")")?;
@@ -73,21 +73,21 @@ impl fmt::Display for RawSexp {
   }
 }
 
-pub type SyntaxTree<E, O> = Sexp<(), EncloserOrOperator<E, O>>;
+pub type SyntaxTree<E, O> = Ast<(), EncloserOrOperator<E, O>>;
 
-impl<E: Encloser, O: Operator> From<SyntaxTree<E, O>> for RawSexp {
+impl<E: Encloser, O: Operator> From<SyntaxTree<E, O>> for RawAst {
   fn from(tree: SyntaxTree<E, O>) -> Self {
     match tree {
-      SyntaxTree::Leaf((), leaf) => RawSexp::Leaf((), leaf),
-      SyntaxTree::Inner(encloser_or_opener, sub_sexps) => RawSexp::inner({
-        let translated_sub_sexps =
-          sub_sexps.into_iter().map(|sub_sexp| sub_sexp.into());
+      SyntaxTree::Leaf((), leaf) => RawAst::Leaf((), leaf),
+      SyntaxTree::Inner(encloser_or_opener, sub_Asts) => RawAst::inner({
+        let translated_sub_Asts =
+          sub_Asts.into_iter().map(|sub_Ast| sub_Ast.into());
         let tag_str = encloser_or_opener.id_str();
         if tag_str.is_empty() {
-          translated_sub_sexps.collect()
+          translated_sub_Asts.collect()
         } else {
-          std::iter::once(RawSexp::leaf(tag_str.to_string()))
-            .chain(translated_sub_sexps)
+          std::iter::once(RawAst::leaf(tag_str.to_string()))
+            .chain(translated_sub_Asts)
             .collect()
         }
       }),

@@ -1,6 +1,6 @@
 use crate::{
   parse::Parse, syntax::Context, DocumentSyntaxTree, Encloser, Operator,
-  ParseError, RawSexp, SyntaxGraph,
+  ParseError, RawAst, SyntaxGraph,
 };
 use std::fmt::Debug;
 use take_mut::take;
@@ -9,7 +9,7 @@ use take_mut::take;
 pub struct Parser<'t, C: Context, E: Encloser, O: Operator> {
   pub(crate) text: &'t str,
   pub(crate) syntax_graph: SyntaxGraph<C, E, O>,
-  parsed_top_level_sexps: Vec<DocumentSyntaxTree<E, O>>,
+  parsed_top_level_Asts: Vec<DocumentSyntaxTree<E, O>>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
 }
@@ -26,7 +26,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
         .max()
         .unwrap_or(0),
       syntax_graph,
-      parsed_top_level_sexps: vec![],
+      parsed_top_level_Asts: vec![],
       already_parsed_index: 0,
     }
   }
@@ -35,41 +35,41 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
     new_syntax_graph: SyntaxGraph<C, E, O>,
   ) {
     self.syntax_graph = new_syntax_graph;
-    self.parsed_top_level_sexps.clear();
+    self.parsed_top_level_Asts.clear();
   }
   pub fn read_next(
     &mut self,
   ) -> Result<Option<DocumentSyntaxTree<E, O>>, ParseError> {
-    while self.parsed_top_level_sexps.len() <= self.top_level_lookahead {
-      let mut stolen_top_level_sexps = vec![];
+    while self.parsed_top_level_Asts.len() <= self.top_level_lookahead {
+      let mut stolen_top_level_Asts = vec![];
       std::mem::swap(
-        &mut stolen_top_level_sexps,
-        &mut self.parsed_top_level_sexps,
+        &mut stolen_top_level_Asts,
+        &mut self.parsed_top_level_Asts,
       );
-      match Parse::new(&self.syntax_graph, stolen_top_level_sexps, &self.text)
+      match Parse::new(&self.syntax_graph, stolen_top_level_Asts, &self.text)
         .complete(self.already_parsed_index)?
       {
-        Ok(new_top_level_sexps) => {
-          self.parsed_top_level_sexps = new_top_level_sexps;
+        Ok(new_top_level_Asts) => {
+          self.parsed_top_level_Asts = new_top_level_Asts;
         }
-        Err(original_top_level_sexps) => {
-          self.parsed_top_level_sexps = original_top_level_sexps;
+        Err(original_top_level_Asts) => {
+          self.parsed_top_level_Asts = original_top_level_Asts;
           break;
         }
       }
     }
-    if self.parsed_top_level_sexps.is_empty() {
+    if self.parsed_top_level_Asts.is_empty() {
       Ok(None)
     } else {
       self.already_parsed_index =
-        self.parsed_top_level_sexps.last().unwrap().position().end();
-      let mut first_sexp = None;
-      take(&mut self.parsed_top_level_sexps, |parsed_top_level_sexps| {
-        let mut iter = parsed_top_level_sexps.into_iter();
-        first_sexp = iter.next();
+        self.parsed_top_level_Asts.last().unwrap().position().end();
+      let mut first_Ast = None;
+      take(&mut self.parsed_top_level_Asts, |parsed_top_level_Asts| {
+        let mut iter = parsed_top_level_Asts.into_iter();
+        first_Ast = iter.next();
         iter.collect()
       });
-      Ok(first_sexp)
+      Ok(first_Ast)
     }
   }
   pub fn read_all(
@@ -79,7 +79,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
     loop {
       match self.read_next() {
         Ok(None) => break,
-        Ok(Some(tagged_sexp)) => results.push(Ok(tagged_sexp)),
+        Ok(Some(tagged_Ast)) => results.push(Ok(tagged_Ast)),
         Err(err) => {
           results.push(Err(err));
           break;
@@ -88,16 +88,16 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
     }
     results
   }
-  pub fn read_next_sexp(&mut self) -> Result<Option<RawSexp>, ParseError> {
-    self.read_next().map(|maybe_tagged_sexp| {
-      maybe_tagged_sexp.map(|tagged_sexp| tagged_sexp.into())
+  pub fn read_next_Ast(&mut self) -> Result<Option<RawAst>, ParseError> {
+    self.read_next().map(|maybe_tagged_Ast| {
+      maybe_tagged_Ast.map(|tagged_Ast| tagged_Ast.into())
     })
   }
-  pub fn read_all_sexps(&mut self) -> Vec<Result<RawSexp, ParseError>> {
+  pub fn read_all_Asts(&mut self) -> Vec<Result<RawAst, ParseError>> {
     self
       .read_all()
       .into_iter()
-      .map(|result| result.map(|tagged_sexp| tagged_sexp.into()))
+      .map(|result| result.map(|tagged_Ast| tagged_Ast.into()))
       .collect()
   }
 }
