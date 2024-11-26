@@ -42,6 +42,77 @@ impl<
   pub fn get_subtree(&self, path: &[usize]) -> Result<&Self, InvalidTreePath> {
     self.get_subtree_inner(path.iter().copied())
   }
+  pub(crate) fn innermost_predicate_reverse_path(
+    &self,
+    predicate: &impl Fn(&Self) -> bool,
+  ) -> Option<Vec<usize>> {
+    predicate(self).then(|| match self {
+      Ast::Leaf(_, _) => vec![],
+      Ast::Inner(_, children) => children
+        .iter()
+        .enumerate()
+        .find_map(|(i, child)| {
+          child.innermost_predicate_reverse_path(predicate).map(
+            |mut reverse_path| {
+              reverse_path.push(i);
+              reverse_path
+            },
+          )
+        })
+        .unwrap_or(vec![]),
+    })
+  }
+  pub fn innermost_predicate_path(
+    &self,
+    predicate: &impl Fn(&Self) -> bool,
+  ) -> Option<Vec<usize>> {
+    if let Some(mut reverse_path) =
+      self.innermost_predicate_reverse_path(predicate)
+    {
+      reverse_path.reverse();
+      Some(reverse_path)
+    } else {
+      None
+    }
+  }
+  pub fn map<
+    NewLeafData: Clone + PartialEq + Eq + Debug,
+    NewInnerData: Clone + PartialEq + Eq + Debug,
+  >(
+    &self,
+    leaf_processor: &impl Fn(&LeafData) -> NewLeafData,
+    inner_processor: &impl Fn(&InnerData) -> NewInnerData,
+  ) -> Ast<NewLeafData, NewInnerData> {
+    match self {
+      Ast::Leaf(data, label) => Ast::Leaf(leaf_processor(data), label.clone()),
+      Ast::Inner(data, children) => Ast::Inner(
+        inner_processor(data),
+        children
+          .into_iter()
+          .map(|child| child.map(leaf_processor, inner_processor))
+          .collect(),
+      ),
+    }
+  }
+  pub fn map_owned<
+    NewLeafData: Clone + PartialEq + Eq + Debug,
+    NewInnerData: Clone + PartialEq + Eq + Debug,
+  >(
+    self,
+    leaf_processor: &impl Fn(LeafData) -> NewLeafData,
+    inner_processor: &impl Fn(InnerData) -> NewInnerData,
+  ) -> Ast<NewLeafData, NewInnerData> {
+    match self {
+      Ast::Leaf(data, label) => Ast::Leaf(leaf_processor(data), label),
+      Ast::Inner(data, children) => Ast::Inner(
+        inner_processor(data),
+        children
+          .into_iter()
+          .map(|child| child.map_owned(leaf_processor, inner_processor))
+          .collect(),
+      ),
+    }
+  }
 }
 
 pub type RawAst = Ast<(), ()>;
@@ -61,9 +132,9 @@ impl fmt::Display for RawAst {
       Ast::Inner(_, sub_expressions) => {
         fmt.write_str("(")?;
         let mut separator = "";
-        for Ast in sub_expressions {
+        for ast in sub_expressions {
           fmt.write_str(separator)?;
-          fmt.write_str(&Ast.to_string())?;
+          fmt.write_str(&ast.to_string())?;
           separator = " ";
         }
         fmt.write_str(")")?;
@@ -79,15 +150,15 @@ impl<E: Encloser, O: Operator> From<SyntaxTree<E, O>> for RawAst {
   fn from(tree: SyntaxTree<E, O>) -> Self {
     match tree {
       SyntaxTree::Leaf((), leaf) => RawAst::Leaf((), leaf),
-      SyntaxTree::Inner(encloser_or_opener, sub_Asts) => RawAst::inner({
-        let translated_sub_Asts =
-          sub_Asts.into_iter().map(|sub_Ast| sub_Ast.into());
+      SyntaxTree::Inner(encloser_or_opener, subtrees) => RawAst::inner({
+        let translated_subtrees =
+          subtrees.into_iter().map(|subtrees| subtrees.into());
         let tag_str = encloser_or_opener.id_str();
         if tag_str.is_empty() {
-          translated_sub_Asts.collect()
+          translated_subtrees.collect()
         } else {
           std::iter::once(RawAst::leaf(tag_str.to_string()))
-            .chain(translated_sub_Asts)
+            .chain(translated_subtrees)
             .collect()
         }
       }),

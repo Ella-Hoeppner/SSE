@@ -9,7 +9,7 @@ use take_mut::take;
 pub struct Parser<'t, C: Context, E: Encloser, O: Operator> {
   pub(crate) text: &'t str,
   pub(crate) syntax_graph: SyntaxGraph<C, E, O>,
-  parsed_top_level_Asts: Vec<DocumentSyntaxTree<E, O>>,
+  parsed_top_level_asts: Vec<DocumentSyntaxTree<E, O>>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
 }
@@ -26,7 +26,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
         .max()
         .unwrap_or(0),
       syntax_graph,
-      parsed_top_level_Asts: vec![],
+      parsed_top_level_asts: vec![],
       already_parsed_index: 0,
     }
   }
@@ -35,41 +35,41 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
     new_syntax_graph: SyntaxGraph<C, E, O>,
   ) {
     self.syntax_graph = new_syntax_graph;
-    self.parsed_top_level_Asts.clear();
+    self.parsed_top_level_asts.clear();
   }
   pub fn read_next(
     &mut self,
   ) -> Result<Option<DocumentSyntaxTree<E, O>>, ParseError> {
-    while self.parsed_top_level_Asts.len() <= self.top_level_lookahead {
-      let mut stolen_top_level_Asts = vec![];
+    while self.parsed_top_level_asts.len() <= self.top_level_lookahead {
+      let mut stolen_top_level_asts = vec![];
       std::mem::swap(
-        &mut stolen_top_level_Asts,
-        &mut self.parsed_top_level_Asts,
+        &mut stolen_top_level_asts,
+        &mut self.parsed_top_level_asts,
       );
-      match Parse::new(&self.syntax_graph, stolen_top_level_Asts, &self.text)
+      match Parse::new(&self.syntax_graph, stolen_top_level_asts, &self.text)
         .complete(self.already_parsed_index)?
       {
-        Ok(new_top_level_Asts) => {
-          self.parsed_top_level_Asts = new_top_level_Asts;
+        Ok(new_top_level_asts) => {
+          self.parsed_top_level_asts = new_top_level_asts;
         }
-        Err(original_top_level_Asts) => {
-          self.parsed_top_level_Asts = original_top_level_Asts;
+        Err(original_top_level_asts) => {
+          self.parsed_top_level_asts = original_top_level_asts;
           break;
         }
       }
     }
-    if self.parsed_top_level_Asts.is_empty() {
+    if self.parsed_top_level_asts.is_empty() {
       Ok(None)
     } else {
       self.already_parsed_index =
-        self.parsed_top_level_Asts.last().unwrap().position().end();
-      let mut first_Ast = None;
-      take(&mut self.parsed_top_level_Asts, |parsed_top_level_Asts| {
-        let mut iter = parsed_top_level_Asts.into_iter();
-        first_Ast = iter.next();
+        self.parsed_top_level_asts.last().unwrap().position().end();
+      let mut first_ast = None;
+      take(&mut self.parsed_top_level_asts, |parsed_top_level_asts| {
+        let mut iter = parsed_top_level_asts.into_iter();
+        first_ast = iter.next();
         iter.collect()
       });
-      Ok(first_Ast)
+      Ok(first_ast)
     }
   }
   pub fn read_all(
@@ -79,7 +79,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
     loop {
       match self.read_next() {
         Ok(None) => break,
-        Ok(Some(tagged_Ast)) => results.push(Ok(tagged_Ast)),
+        Ok(Some(tagged_ast)) => results.push(Ok(tagged_ast)),
         Err(err) => {
           results.push(Err(err));
           break;
@@ -88,16 +88,16 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
     }
     results
   }
-  pub fn read_next_Ast(&mut self) -> Result<Option<RawAst>, ParseError> {
-    self.read_next().map(|maybe_tagged_Ast| {
-      maybe_tagged_Ast.map(|tagged_Ast| tagged_Ast.into())
+  pub fn read_next_ast(&mut self) -> Result<Option<RawAst>, ParseError> {
+    self.read_next().map(|maybe_tagged_ast| {
+      maybe_tagged_ast.map(|tagged_ast| tagged_ast.into())
     })
   }
-  pub fn read_all_Asts(&mut self) -> Vec<Result<RawAst, ParseError>> {
+  pub fn read_all_asts(&mut self) -> Vec<Result<RawAst, ParseError>> {
     self
       .read_all()
       .into_iter()
-      .map(|result| result.map(|tagged_Ast| tagged_Ast.into()))
+      .map(|result| result.map(|tagged_ast| tagged_ast.into()))
       .collect()
   }
 }

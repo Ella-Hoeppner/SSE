@@ -38,9 +38,9 @@ impl Display for ParseError {
 
 pub(crate) struct Parse<'t, 'g, C: Context, E: Encloser, O: Operator> {
   text: &'t str,
-  inherited_top_level_Asts: Vec<DocumentSyntaxTree<E, O>>,
+  inherited_top_level_asts: Vec<DocumentSyntaxTree<E, O>>,
   syntax_graph: &'g SyntaxGraph<C, E, O>,
-  open_Asts: Vec<(
+  open_asts: Vec<(
     usize,
     EncloserOrOperator<E, O>,
     Vec<DocumentSyntaxTree<E, O>>,
@@ -50,17 +50,17 @@ pub(crate) struct Parse<'t, 'g, C: Context, E: Encloser, O: Operator> {
 impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
   pub(crate) fn new(
     syntax_graph: &'g SyntaxGraph<C, E, O>,
-    inherited_top_level_Asts: Vec<DocumentSyntaxTree<E, O>>,
+    inherited_top_level_asts: Vec<DocumentSyntaxTree<E, O>>,
     text: &'t str,
   ) -> Self {
     Self {
       text,
-      inherited_top_level_Asts,
+      inherited_top_level_asts,
       syntax_graph,
-      open_Asts: vec![],
+      open_asts: vec![],
     }
   }
-  fn consume_left_Asts(
+  fn consume_left_asts(
     &mut self,
     operator: &O,
   ) -> Result<Vec<DocumentSyntaxTree<E, O>>, ParseError> {
@@ -68,20 +68,20 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
     if n == 0 {
       Ok(vec![])
     } else {
-      if let Some((_, _, subAsts)) = self.open_Asts.last_mut() {
-        if subAsts.len() >= n {
-          Ok(subAsts.split_off(subAsts.len() - n))
+      if let Some((_, _, subtrees)) = self.open_asts.last_mut() {
+        if subtrees.len() >= n {
+          Ok(subtrees.split_off(subtrees.len() - n))
         } else {
           Err(ParseError::OperatorMissingLeftArgument(
             operator.op_str().to_string(),
           ))
         }
       } else {
-        if self.inherited_top_level_Asts.len() >= n {
+        if self.inherited_top_level_asts.len() >= n {
           Ok(
             self
-              .inherited_top_level_Asts
-              .split_off(self.inherited_top_level_Asts.len() - n),
+              .inherited_top_level_asts
+              .split_off(self.inherited_top_level_asts.len() - n),
           )
         } else {
           Err(ParseError::OperatorMissingLeftArgument(
@@ -91,36 +91,35 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
       }
     }
   }
-  fn close_Ast(
+  fn close_ast(
     &mut self,
     closing_index: usize,
   ) -> Option<DocumentSyntaxTree<E, O>> {
-    let (opening_index, encloser_or_operator, sub_Asts) = self
-      .open_Asts
+    let (opening_index, encloser_or_operator, subtrees) = self
+      .open_asts
       .pop()
-      .expect("called close_Ast with no open partial Ast");
-    self.push_closed_Ast(DocumentSyntaxTree::Inner(
+      .expect("called close_ast with no open partial Ast");
+    self.push_closed_ast(DocumentSyntaxTree::Inner(
       (
         DocumentPosition::new(opening_index..closing_index, vec![]),
         encloser_or_operator,
       ),
-      sub_Asts,
+      subtrees,
     ))
   }
-  fn push_closed_Ast(
+  fn push_closed_ast(
     &mut self,
-    Ast: DocumentSyntaxTree<E, O>,
+    ast: DocumentSyntaxTree<E, O>,
   ) -> Option<DocumentSyntaxTree<E, O>> {
-    if let Some((_, encloser_or_operator, subAsts)) =
-      self.open_Asts.last_mut()
+    if let Some((_, encloser_or_operator, subtrees)) = self.open_asts.last_mut()
     {
-      let end = Ast.position().end();
-      subAsts.push(Ast);
+      let end = ast.position().end();
+      subtrees.push(ast);
       if let EncloserOrOperator::Operator(operator) = encloser_or_operator {
         let left_args = operator.left_args();
         let right_args = operator.right_args();
-        if subAsts.len() == left_args + right_args {
-          self.close_Ast(end)
+        if subtrees.len() == left_args + right_args {
+          self.close_ast(end)
         } else {
           None
         }
@@ -128,12 +127,12 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
         None
       }
     } else {
-      Some(Ast)
+      Some(ast)
     }
   }
   fn awaited_closer(&'g self) -> Option<&'g str> {
     self
-      .open_Asts
+      .open_asts
       .iter()
       .rev()
       .filter_map(|(_, encloser_or_operator, _)| {
@@ -153,12 +152,12 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
     ParseError,
   > {
     let beginning_index = self
-      .inherited_top_level_Asts
+      .inherited_top_level_asts
       .last()
       .map(|syntax_tree| syntax_tree.position().end())
       .unwrap_or(already_parsed_index);
     if beginning_index >= self.text.len() {
-      return Ok(Err(self.inherited_top_level_Asts));
+      return Ok(Err(self.inherited_top_level_asts));
     }
 
     let mut indexed_characters = self.text[beginning_index..]
@@ -177,8 +176,8 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
       macro_rules! finish_terminal {
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
-            if let Some(completed_Ast) =
-              self.push_closed_Ast(DocumentSyntaxTree::Leaf(
+            if let Some(completed_ast) =
+              self.push_closed_ast(DocumentSyntaxTree::Leaf(
                 DocumentPosition::new(
                   terminal_beginning..character_index,
                   vec![],
@@ -186,9 +185,9 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
                 self.text[terminal_beginning..character_index].to_string(),
               ))
             {
-              let mut top_level_Asts = self.inherited_top_level_Asts;
-              top_level_Asts.push(completed_Ast);
-              return Ok(Ok(top_level_Asts));
+              let mut top_level_asts = self.inherited_top_level_asts;
+              top_level_asts.push(completed_ast);
+              return Ok(Ok(top_level_asts));
             }
             current_terminal_beginning = None;
           }
@@ -204,7 +203,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
 
       let active_context = self.syntax_graph.get_context(
         self
-          .open_Asts
+          .open_asts
           .last()
           .map(|(_, tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root),
@@ -231,7 +230,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
             let closer_len = awaited_closer.len();
             finish_terminal!();
 
-            if let Some((_, encloser_or_operator, _)) = self.open_Asts.last() {
+            if let Some((_, encloser_or_operator, _)) = self.open_asts.last() {
               if let EncloserOrOperator::Operator(operator) =
                 encloser_or_operator
               {
@@ -241,10 +240,10 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
               }
             }
 
-            if let Some(completed_Ast) = self.close_Ast(character_index + 1) {
-              let mut top_level_Asts = self.inherited_top_level_Asts;
-              top_level_Asts.push(completed_Ast);
-              return Ok(Ok(top_level_Asts));
+            if let Some(completed_ast) = self.close_ast(character_index + 1) {
+              let mut top_level_asts = self.inherited_top_level_asts;
+              top_level_asts.push(completed_ast);
+              return Ok(Ok(top_level_asts));
             } else {
               skip_n_chars!(closer_len);
               continue;
@@ -253,7 +252,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
         }
 
         let active_context_tag = self
-          .open_Asts
+          .open_asts
           .last()
           .map(|(_, tag, _)| self.syntax_graph.get_context_tag(tag))
           .unwrap_or(&self.syntax_graph.root);
@@ -266,7 +265,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
           let beginning_marker = encloser.opening_encloser_str();
           if remaining_text.starts_with(beginning_marker) {
             finish_terminal!();
-            self.open_Asts.push((
+            self.open_asts.push((
               character_index,
               EncloserOrOperator::Encloser(encloser.clone()),
               vec![],
@@ -284,8 +283,8 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
           let op_marker = operator.op_str();
           if remaining_text.starts_with(op_marker) {
             finish_terminal!();
-            let leftward_args = self.consume_left_Asts(operator)?;
-            self.open_Asts.push((
+            let leftward_args = self.consume_left_asts(operator)?;
+            self.open_asts.push((
               leftward_args
                 .first()
                 .map(|first_arg| first_arg.position().start())
@@ -295,11 +294,10 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
             ));
             skip_n_chars!(op_marker.len());
             if operator.right_args() == 0 {
-              if let Some(completed_Ast) = self.close_Ast(character_index + 1)
-              {
-                let mut top_level_Asts = self.inherited_top_level_Asts;
-                top_level_Asts.push(completed_Ast);
-                return Ok(Ok(top_level_Asts));
+              if let Some(completed_ast) = self.close_ast(character_index + 1) {
+                let mut top_level_asts = self.inherited_top_level_asts;
+                top_level_asts.push(completed_ast);
+                return Ok(Ok(top_level_asts));
               }
             }
             continue 'outer;
@@ -318,8 +316,8 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
       }
     }
 
-    match self.open_Asts.last() {
-      None => Ok(Err(self.inherited_top_level_Asts)),
+    match self.open_asts.last() {
+      None => Ok(Err(self.inherited_top_level_asts)),
       Some((_, encloser_or_operator, _)) => match encloser_or_operator {
         EncloserOrOperator::Encloser(encloser) => {
           Err(ParseError::EndOfTextWithOpenEncloser(

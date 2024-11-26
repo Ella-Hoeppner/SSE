@@ -43,39 +43,6 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
     self.position().start() >= selection.start
       && self.position().end() <= selection.end
   }
-  pub(crate) fn innermost_predicate_reverse_path(
-    &self,
-    predicate: &impl Fn(&Self) -> bool,
-  ) -> Option<Vec<usize>> {
-    predicate(self).then(|| match self {
-      Ast::Leaf(_, _) => vec![],
-      Ast::Inner(_, children) => children
-        .iter()
-        .enumerate()
-        .find_map(|(i, child)| {
-          child.innermost_predicate_reverse_path(predicate).map(
-            |mut reverse_path| {
-              reverse_path.push(i);
-              reverse_path
-            },
-          )
-        })
-        .unwrap_or(vec![]),
-    })
-  }
-  pub fn innermost_predicate_path(
-    &self,
-    predicate: &impl Fn(&Self) -> bool,
-  ) -> Option<Vec<usize>> {
-    if let Some(mut reverse_path) =
-      self.innermost_predicate_reverse_path(predicate)
-    {
-      reverse_path.reverse();
-      Some(reverse_path)
-    } else {
-      None
-    }
-  }
   pub fn calculate_paths(self, parent_path: Vec<usize>) -> Self {
     use Ast::*;
     match self {
@@ -140,9 +107,9 @@ impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>
   fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
     match tree {
       DocumentSyntaxTree::Leaf(_, leaf) => SyntaxTree::Leaf((), leaf),
-      DocumentSyntaxTree::Inner((_, encloser_or_opener), sub_Asts) => {
+      DocumentSyntaxTree::Inner((_, encloser_or_opener), subtrees) => {
         SyntaxTree::Inner(encloser_or_opener, {
-          sub_Asts.into_iter().map(SyntaxTree::from).collect()
+          subtrees.into_iter().map(SyntaxTree::from).collect()
         })
       }
     }

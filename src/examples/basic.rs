@@ -37,7 +37,7 @@ impl Operator for NoOperator {
 
 pub type AstGraph = SyntaxGraph<(), AstEncloser, NoOperator>;
 
-pub fn Ast_graph<'g>() -> AstGraph {
+pub fn ast_graph<'g>() -> AstGraph {
   let context = SyntaxContext::new(
     vec![AstEncloser],
     vec![],
