@@ -3,6 +3,7 @@
 mod ast;
 pub mod document;
 pub mod examples;
+pub mod formatting;
 mod parse;
 mod parser;
 pub mod str_tagged;
@@ -42,6 +43,7 @@ mod core_tests {
       basic::{ast_graph, AstEncloser},
       psuedo_clj::{clj_graph, CljEncloser},
     },
+    formatting::FormatingContext,
     standard_whitespace_chars,
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
@@ -1052,6 +1054,33 @@ mod core_tests {
         .map(|tree| tree.position().path.clone())
         .collect::<Vec<Vec<usize>>>(),
       vec![vec![0, 0], vec![0, 1], vec![0, 2], vec![0, 3]]
+    );
+  }
+
+  #[test]
+  fn basic_format() {
+    let source = "(+ 1 '(* 2 3) [4 5])";
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    assert_eq!(
+      source,
+      doc.syntax_trees[0]
+        .format(&FormatingContext::default())
+        .unwrap()
+        .as_str()
+    );
+  }
+
+  #[test]
+  fn infix_operator_format() {
+    let source = "(abs 1+2)";
+    let doc =
+      Document::from_text_with_syntax(plus_ast_graph(), source).unwrap();
+    assert_eq!(
+      source,
+      doc.syntax_trees[0]
+        .format(&FormatingContext::default())
+        .unwrap()
+        .as_str()
     );
   }
 }
