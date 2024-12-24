@@ -80,11 +80,14 @@ impl<
     NewInnerData: Clone + PartialEq + Eq + Debug,
   >(
     &self,
-    leaf_processor: &impl Fn(&LeafData) -> NewLeafData,
+    leaf_processor: &impl Fn(&LeafData, &String) -> (NewLeafData, String),
     inner_processor: &impl Fn(&InnerData) -> NewInnerData,
   ) -> Ast<NewLeafData, NewInnerData> {
     match self {
-      Ast::Leaf(data, label) => Ast::Leaf(leaf_processor(data), label.clone()),
+      Ast::Leaf(data, label) => {
+        let (new_data, new_label) = leaf_processor(data, label);
+        Ast::Leaf(new_data, new_label)
+      }
       Ast::Inner(data, children) => Ast::Inner(
         inner_processor(data),
         children

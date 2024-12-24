@@ -438,4 +438,30 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
         .collect()
     })
   }
+  pub fn map_trees(
+    mut self,
+    f: impl Fn(DocumentSyntaxTree<E, O>) -> DocumentSyntaxTree<E, O>,
+  ) -> Self {
+    let mut trees = vec![];
+    std::mem::swap(&mut self.syntax_trees, &mut trees);
+    self.syntax_trees = trees.into_iter().map(|tree| f(tree)).collect();
+    self
+  }
+  pub fn replace_leaves(self, leaf: &str, replacement: &str) -> Self {
+    self.map_trees(|ast| {
+      ast.map(
+        &|data, l| {
+          (
+            data.clone(),
+            if l == leaf {
+              replacement.to_string()
+            } else {
+              l.to_string()
+            },
+          )
+        },
+        &|x| x.clone(),
+      )
+    })
+  }
 }
