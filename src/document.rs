@@ -4,6 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
   ast::InvalidTreePath,
+  formatting::{Formatter, FormattingError, FormattingResult},
   syntax::{Context, EncloserOrOperator},
   Ast, Encloser, Operator, ParseError, Parser, RawAst, SyntaxGraph, SyntaxTree,
 };
@@ -463,5 +464,22 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
         &|x| x.clone(),
       )
     })
+  }
+  pub fn format(
+    self,
+    formatter: &Formatter<
+      DocumentPosition,
+      (DocumentPosition, EncloserOrOperator<E, O>),
+    >,
+  ) -> FormattingResult<String> {
+    Ok(
+      self
+        .syntax_trees
+        .into_iter()
+        .map(|ast| ast.format(formatter))
+        .collect::<FormattingResult<Vec<String>>>()?
+        .join("\n\n")
+        + "\n",
+    )
   }
 }

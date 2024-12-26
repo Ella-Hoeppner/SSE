@@ -116,6 +116,87 @@ impl<
       ),
     }
   }
+  pub fn matches_pattern(
+    &self,
+    pattern: &Self,
+    holes: &Vec<(String, bool)>,
+    leaf_equivalence_checker: &impl Fn(&LeafData, &LeafData) -> bool,
+    inner_equivalence_checker: &impl Fn(&InnerData, &InnerData) -> bool,
+  ) -> bool {
+    match pattern {
+      Ast::Leaf(pattern_data, pattern_leaf) => {
+        if holes.iter().find(|(s, _)| s == pattern_leaf).is_some() {
+          true
+        } else {
+          if let Ast::Leaf(data, leaf) = self {
+            (leaf == pattern_leaf)
+              && leaf_equivalence_checker(data, pattern_data)
+          } else {
+            false
+          }
+        }
+      }
+      Ast::Inner(pattern_data, pattern_children) => {
+        if let Ast::Inner(data, children) = self {
+          if !inner_equivalence_checker(pattern_data, data) {
+            return false;
+          }
+          for i in 0..pattern_children.len() {
+            let pattern_child = &pattern_children[i];
+            if let Ast::Leaf(_, pattern_leaf) = pattern_child {
+              if let Some(open) = holes
+                .iter()
+                .find_map(|(s, open)| (s == pattern_leaf).then(|| open))
+              {
+                if *open {
+                  return true;
+                }
+                continue;
+              }
+            }
+            if children.len() <= i
+              || !children[i].matches_pattern(
+                pattern_child,
+                holes,
+                leaf_equivalence_checker,
+                inner_equivalence_checker,
+              )
+            {
+              return false;
+            }
+          }
+          pattern_children.len() == children.len()
+        } else {
+          false
+        }
+      }
+    }
+  }
+  fn find_leaf_reverse_path(&self, searched_leaf: &str) -> Option<Vec<usize>> {
+    match self {
+      Ast::Leaf(_, leaf) => {
+        if leaf == searched_leaf {
+          Some(vec![])
+        } else {
+          None
+        }
+      }
+      Ast::Inner(_, children) => {
+        children.iter().enumerate().find_map(|(i, child)| {
+          child.find_leaf_reverse_path(searched_leaf).map(|mut path| {
+            path.push(i);
+            path
+          })
+        })
+      }
+    }
+  }
+  pub fn find_leaf_path(&self, searched_leaf: &str) -> Option<Vec<usize>> {
+    self.find_leaf_reverse_path(searched_leaf).map(|mut path| {
+      path.reverse();
+      path
+    })
+  }
 }
 
 pub type RawAst = Ast<(), ()>;

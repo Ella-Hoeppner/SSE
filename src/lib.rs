@@ -43,7 +43,10 @@ mod core_tests {
       basic::{ast_graph, AstEncloser},
       psuedo_clj::{clj_graph, CljEncloser},
     },
-    formatting::FormattingStyle,
+    formatting::{
+      ContainsEncloserOrOperator, Formatter, FormattingSpecialCase,
+      FormattingStyle,
+    },
     standard_whitespace_chars,
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
@@ -1064,7 +1067,10 @@ mod core_tests {
     assert_eq!(
       source,
       doc.syntax_trees[0]
-        .format(FormattingStyle::SingleLine)
+        .clone()
+        .format(&Formatter::new_with_default_style(
+          FormattingStyle::SingleLine
+        ))
         .unwrap()
         .as_str()
     );
@@ -1078,7 +1084,10 @@ mod core_tests {
     assert_eq!(
       source,
       doc.syntax_trees[0]
-        .format(FormattingStyle::SingleLine)
+        .clone()
+        .format(&Formatter::new_with_default_style(
+          FormattingStyle::SingleLine
+        ))
         .unwrap()
         .as_str()
     );
@@ -1091,7 +1100,12 @@ mod core_tests {
     assert_eq!(
       source,
       doc.syntax_trees[0]
-        .format(FormattingStyle::MultiLineAlignedToSecond)
+        .clone()
+        .format(&Formatter::new_with_default_style(
+          FormattingStyle::MultiLineAlignedToSecond {
+            single_line_threshold: 0,
+          }
+        ))
         .unwrap()
         .as_str()
     );
@@ -1102,7 +1116,196 @@ mod core_tests {
     let source = include_str!("test_data/nested_multiline_format.sse");
     let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
     let formatted = doc.syntax_trees[0]
-      .format(FormattingStyle::MultiLineAlignedToSecond)
+      .clone()
+      .format(&Formatter::new_with_default_style(
+        FormattingStyle::MultiLineAlignedToSecond {
+          single_line_threshold: 0,
+        },
+      ))
+      .unwrap();
+    assert_eq!(source, formatted.as_str());
+  }
+
+  #[test]
+  fn nested_multiline_format_with_threshold() {
+    let source =
+      include_str!("test_data/nested_multiline_format_with_threshold.sse");
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    let formatted = doc.syntax_trees[0]
+      .clone()
+      .format(&Formatter::new_with_default_style(
+        FormattingStyle::MultiLineAlignedToSecond {
+          single_line_threshold: 5,
+        },
+      ))
+      .unwrap();
+    assert_eq!(source, formatted.as_str());
+  }
+
+  #[test]
+  fn one_per_line_format() {
+    let source = include_str!("test_data/one_per_line.sse");
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    let formatted = doc.syntax_trees[0]
+      .clone()
+      .format(&Formatter::new_with_default_style(
+        FormattingStyle::NPerLine { n: 1 },
+      ))
+      .unwrap();
+    assert_eq!(source, formatted.as_str());
+  }
+
+  #[test]
+  fn two_per_line_format() {
+    let source = include_str!("test_data/two_per_line.sse");
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    let formatted = doc.syntax_trees[0]
+      .clone()
+      .format(&Formatter::new_with_default_style(
+        FormattingStyle::NPerLine { n: 2 },
+      ))
+      .unwrap();
+    assert_eq!(source, formatted.as_str());
+  }
+
+  #[test]
+  fn matches_pattern() {
+    let pattern_source = "(+ HOLE1 HOLE2)";
+    let pattern_tree =
+      &Document::from_text_with_syntax(clj_graph(), pattern_source)
+        .unwrap()
+        .syntax_trees[0];
+    let holes =
+      vec![("HOLE1".to_string(), false), ("HOLE2".to_string(), false)];
+
+    let matching_source = "(+ 1 2)";
+    let matching_tree =
+      &Document::from_text_with_syntax(clj_graph(), matching_source)
+        .unwrap()
+        .syntax_trees[0];
+    assert!(matching_tree.matches_pattern(
+      pattern_tree,
+      &holes,
+      &|_, _| true,
+      &|a, b| a.get_encloser_or_operator() == b.get_encloser_or_operator()
+    ));
+
+    let failing_source = "(+ 1 2 3)";
+    let failing_tree =
+      &Document::from_text_with_syntax(clj_graph(), failing_source)
+        .unwrap()
+        .syntax_trees[0];
+    assert!(!failing_tree.matches_pattern(
+      pattern_tree,
+      &holes,
+      &|_, _| true,
+      &|a, b| a.get_encloser_or_operator() == b.get_encloser_or_operator()
+    ));
+  }
+
+  #[test]
+  fn matches_open_pattern() {
+    let pattern_source = "(+ HOLE1)";
+    let pattern_tree =
+      &Document::from_text_with_syntax(clj_graph(), pattern_source)
+        .unwrap()
+        .syntax_trees[0];
+    let holes = vec![("HOLE1".to_string(), true)];
+
+    let matching_source = "(+ 1 2)";
+    let matching_tree =
+      &Document::from_text_with_syntax(clj_graph(), matching_source)
+        .unwrap()
+        .syntax_trees[0];
+    assert!(matching_tree.matches_pattern(
+      pattern_tree,
+      &holes,
+      &|_, _| true,
+      &|a, b| a.get_encloser_or_operator() == b.get_encloser_or_operator()
+    ));
+
+    let failing_source = "(- 1 2)";
+    let failing_tree =
+      &Document::from_text_with_syntax(clj_graph(), failing_source)
+        .unwrap()
+        .syntax_trees[0];
+    assert!(!failing_tree.matches_pattern(
+      pattern_tree,
+      &holes,
+      &|_, _| true,
+      &|a, b| a.get_encloser_or_operator() == b.get_encloser_or_operator()
+    ));
+  }
+
+  #[test]
+  fn let_formatting() {
+    let source = include_str!("test_data/let_formatting.sse");
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    let formatted = doc.syntax_trees[0]
+      .clone()
+      .format(
+        &Formatter::new_with_default_style(
+          FormattingStyle::MultiLineAlignedToSecond {
+            single_line_threshold: 16,
+          },
+        )
+        .with_special_case(FormattingSpecialCase {
+          pattern: Document::from_text_with_syntax(
+            clj_graph(),
+            "(let [HOLE1] HOLE2)",
+          )
+          .unwrap()
+          .syntax_trees[0]
+            .clone(),
+          holes: vec![("HOLE1".to_string(), true), ("HOLE2".to_string(), true)],
+          style: Some(FormattingStyle::MultiLineOffsetByConstantAfterSecond {
+            offset: 1,
+          }),
+          hole_styles: [(
+            "HOLE1".to_string(),
+            FormattingStyle::NPerLine { n: 2 },
+          )]
+          .into_iter()
+          .collect(),
+        }),
+      )
+      .unwrap();
+    println!("{formatted}");
+    assert_eq!(source, formatted.as_str());
+  }
+
+  #[test]
+  fn nested_let_formatting() {
+    let source = include_str!("test_data/nested_let_formatting.sse");
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    let formatted = doc.syntax_trees[0]
+      .clone()
+      .format(
+        &Formatter::new_with_default_style(
+          FormattingStyle::MultiLineAlignedToSecond {
+            single_line_threshold: 16,
+          },
+        )
+        .with_special_case(FormattingSpecialCase {
+          pattern: Document::from_text_with_syntax(
+            clj_graph(),
+            "(let [HOLE1] HOLE2)",
+          )
+          .unwrap()
+          .syntax_trees[0]
+            .clone(),
+          holes: vec![("HOLE1".to_string(), true), ("HOLE2".to_string(), true)],
+          style: Some(FormattingStyle::MultiLineOffsetByConstantAfterSecond {
+            offset: 1,
+          }),
+          hole_styles: [(
+            "HOLE1".to_string(),
+            FormattingStyle::NPerLine { n: 2 },
+          )]
+          .into_iter()
+          .collect(),
+        }),
+      )
       .unwrap();
     println!("{formatted}");
     assert_eq!(source, formatted.as_str());
