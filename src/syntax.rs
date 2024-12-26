@@ -1,7 +1,5 @@
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
-use crate::formatting::{FormatingContext, FormattingError, FormattingResult};
-
 pub trait Context: Clone + Debug + PartialEq + Eq + Hash {
   fn is_comment(&self) -> bool;
 }

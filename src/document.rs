@@ -293,7 +293,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
           enclosing_path[last_index] -= 1;
         }
       } else if cursor != end_of_enclosing {
-        return cursor;
+        return start_of_enclosing;
       }
     }
     if enclosing_path.is_empty() {

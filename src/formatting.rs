@@ -1,6 +1,5 @@
 use crate::{
-  document::DocumentPosition, Ast, DocumentSyntaxTree, Encloser,
-  EncloserOrOperator, Operator,
+  document::DocumentPosition, Ast, Encloser, EncloserOrOperator, Operator,
 };
 use std::fmt::Debug;
 
