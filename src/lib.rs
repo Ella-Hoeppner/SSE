@@ -43,7 +43,7 @@ mod core_tests {
       basic::{ast_graph, AstEncloser},
       psuedo_clj::{clj_graph, CljEncloser},
     },
-    formatting::FormatingContext,
+    formatting::FormattingStyle,
     standard_whitespace_chars,
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntaxGraph,
@@ -1064,7 +1064,7 @@ mod core_tests {
     assert_eq!(
       source,
       doc.syntax_trees[0]
-        .format(&FormatingContext::default())
+        .format(FormattingStyle::SingleLine)
         .unwrap()
         .as_str()
     );
@@ -1078,9 +1078,33 @@ mod core_tests {
     assert_eq!(
       source,
       doc.syntax_trees[0]
-        .format(&FormatingContext::default())
+        .format(FormattingStyle::SingleLine)
         .unwrap()
         .as_str()
     );
+  }
+
+  #[test]
+  fn multiline_format() {
+    let source = "(+ 1\n   2)";
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    assert_eq!(
+      source,
+      doc.syntax_trees[0]
+        .format(FormattingStyle::MultiLineAlignedToSecond)
+        .unwrap()
+        .as_str()
+    );
+  }
+
+  #[test]
+  fn nested_multiline_format() {
+    let source = include_str!("test_data/nested_multiline_format.sse");
+    let doc = Document::from_text_with_syntax(clj_graph(), source).unwrap();
+    let formatted = doc.syntax_trees[0]
+      .format(FormattingStyle::MultiLineAlignedToSecond)
+      .unwrap();
+    println!("{formatted}");
+    assert_eq!(source, formatted.as_str());
   }
 }
