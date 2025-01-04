@@ -122,7 +122,7 @@ impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>> for RawAst {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Document<'t, C: Context, E: Encloser, O: Operator> {
   pub text: &'t str,
   grapheme_indeces: Vec<usize>,
