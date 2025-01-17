@@ -76,6 +76,22 @@ impl<E: Encloser, O: Operator> EncloserOrOperator<E, O> {
   }
 }
 
+pub trait ContainsEncloserOrOperator<E: Encloser, O: Operator> {
+  fn get_encloser_or_operator(&self) -> &EncloserOrOperator<E, O>;
+  fn into_encloser_or_operator(self) -> EncloserOrOperator<E, O>;
+}
+
+impl<E: Encloser, O: Operator> ContainsEncloserOrOperator<E, O>
+  for EncloserOrOperator<E, O>
+{
+  fn get_encloser_or_operator(&self) -> &EncloserOrOperator<E, O> {
+    self
+  }
+  fn into_encloser_or_operator(self) -> EncloserOrOperator<E, O> {
+    self
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct SyntaxGraph<C: Context, E: Encloser, O: Operator> {
   pub(crate) root: C,

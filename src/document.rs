@@ -4,7 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
   ast::InvalidTreePath,
-  syntax::{Context, EncloserOrOperator},
+  syntax::{ContainsEncloserOrOperator, Context, EncloserOrOperator},
   Ast, Encloser, Operator, ParseError, Parser, RawAst, SyntaxGraph, SyntaxTree,
 };
 
@@ -28,7 +28,60 @@ impl DocumentPosition {
 pub type DocumentSyntaxTree<E, O> =
   Ast<DocumentPosition, (DocumentPosition, EncloserOrOperator<E, O>)>;
 
+impl<E: Encloser, O: Operator> ContainsEncloserOrOperator<E, O>
+  for (DocumentPosition, EncloserOrOperator<E, O>)
+{
+  fn get_encloser_or_operator(&self) -> &EncloserOrOperator<E, O> {
+    &self.1
+  }
+
+  fn into_encloser_or_operator(self) -> EncloserOrOperator<E, O> {
+    self.1
+  }
+}
+
 impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
+  fn from_raw_ast_inner<
+    L: Clone + PartialEq + Debug,
+    I: Clone + PartialEq + Debug + ContainsEncloserOrOperator<E, O>,
+  >(
+    ast: Ast<L, I>,
+    path: Vec<usize>,
+  ) -> Self {
+    match ast {
+      Ast::Leaf(_, leaf) => {
+        Self::Leaf(DocumentPosition { span: 0..0, path }, leaf)
+      }
+      Ast::Inner(data, children) => {
+        let translated_children = children
+          .into_iter()
+          .enumerate()
+          .map(|(i, child)| {
+            Self::from_raw_ast_inner(child, {
+              let mut new_path = path.clone();
+              new_path.push(i);
+              new_path
+            })
+          })
+          .collect();
+        Self::Inner(
+          (
+            DocumentPosition { span: 0..0, path },
+            data.into_encloser_or_operator(),
+          ),
+          translated_children,
+        )
+      }
+    }
+  }
+  pub fn from_raw_ast<
+    L: Clone + PartialEq + Debug,
+    I: Clone + PartialEq + Debug + ContainsEncloserOrOperator<E, O>,
+  >(
+    ast: Ast<L, I>,
+  ) -> Self {
+    Self::from_raw_ast_inner(ast, vec![])
+  }
   pub fn position(&self) -> &DocumentPosition {
     match self {
       Ast::Leaf(position, _) => position,
@@ -98,6 +151,38 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       }),
       leaf => Some(leaf),
     }
+  }
+  fn replace_subtree_inner(
+    &mut self,
+    mut path: impl Iterator<Item = usize>,
+    mut replacement: Self,
+  ) {
+    match path.next() {
+      Some(i) => match self {
+        Ast::Leaf(_, _) => {
+          panic!("replace_subtree_inner encountered a leaf along provided path")
+        }
+        Ast::Inner(_, children) => {
+          if i < children.len() {
+            children[i].replace_subtree_inner(path, replacement);
+          } else {
+            panic!("replace_subtree_inner tried to go to an invalid index")
+          }
+        }
+      },
+      None => std::mem::swap(self, &mut replacement),
+    }
+  }
+  pub fn replace_subtree(&mut self, path: Vec<usize>, replacement: Self) {
+    let modify_pos = |mut pos: DocumentPosition| {
+      pos.path = path.iter().copied().chain(pos.path.into_iter()).collect();
+      pos
+    };
+    let modified_replacement = replacement.map_owned(
+      &|pos, leaf| (modify_pos(pos), leaf),
+      &|(pos, encloser_or_operator)| (modify_pos(pos), encloser_or_operator),
+    );
+    self.replace_subtree_inner(path.into_iter(), modified_replacement)
   }
 }
 
