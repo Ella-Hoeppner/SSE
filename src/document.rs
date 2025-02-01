@@ -184,6 +184,70 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
     );
     self.replace_subtree_inner(path.into_iter(), modified_replacement)
   }
+  fn gather_annotations<Annotation: Clone, WalkState>(
+    &self,
+    walk_state: &WalkState,
+    annotation_log: &mut Vec<(Range<usize>, Annotation)>,
+    leaf_annotator: &impl Fn(&str, &WalkState) -> Option<Annotation>,
+    encloser_annotator: &impl Fn(&E, &WalkState) -> (WalkState, Option<Annotation>),
+    operator_annotator: &impl Fn(&O, &WalkState) -> (WalkState, Option<Annotation>),
+  ) {
+    match self {
+      Ast::Leaf(position, leaf) => {
+        if let Some(annotation) = leaf_annotator(&leaf, &walk_state) {
+          annotation_log.push((position.span.clone(), annotation))
+        }
+      }
+      Ast::Inner((position, encloser_or_operator), children) => {
+        let inner_walk_state = match encloser_or_operator {
+          EncloserOrOperator::Encloser(encloser) => {
+            let (inner_walk_state, maybe_annotation) =
+              encloser_annotator(encloser, &walk_state);
+            if let Some(annotation) = maybe_annotation {
+              let start = position.span.start;
+              let end = position.span.end;
+              annotation_log.push((
+                (start..start + encloser.opening_encloser_str().len()),
+                annotation.clone(),
+              ));
+              annotation_log.push((
+                (end - encloser.closing_encloser_str().len()..end),
+                annotation,
+              ));
+            }
+            inner_walk_state
+          }
+          EncloserOrOperator::Operator(operator) => {
+            let (inner_walk_state, maybe_annotation) =
+              operator_annotator(operator, &walk_state);
+            if let Some(annotation) = maybe_annotation {
+              let start = if operator.left_args() == 0 {
+                position.start()
+              } else {
+                children[operator.left_args() - 1].position().end()
+              };
+              let end = if operator.right_args() == 0 {
+                position.end()
+              } else {
+                children[operator.left_args()].position().start()
+              };
+              annotation_log.push((start..end, annotation));
+            }
+            inner_walk_state
+          }
+        };
+        for child in children.iter() {
+          child.gather_annotations(
+            &inner_walk_state,
+            annotation_log,
+            leaf_annotator,
+            encloser_annotator,
+            operator_annotator,
+          );
+        }
+      }
+    }
+  }
 }
 
 impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>
@@ -548,5 +612,24 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
         &|x| x.clone(),
       )
     })
+  }
+  pub fn gather_annotations<Annotation: Clone, WalkState>(
+    &self,
+    root_walk_state: WalkState,
+    leaf_annotator: &impl Fn(&str, &WalkState) -> Option<Annotation>,
+    encloser_annotator: &impl Fn(&E, &WalkState) -> (WalkState, Option<Annotation>),
+    operator_annotator: &impl Fn(&O, &WalkState) -> (WalkState, Option<Annotation>),
+  ) -> Vec<(Range<usize>, Annotation)> {
+    let mut annotation_log = vec![];
+    for tree in self.syntax_trees.iter() {
+      tree.gather_annotations(
+        &root_walk_state,
+        &mut annotation_log,
+        leaf_annotator,
+        encloser_annotator,
+        operator_annotator,
+      );
+    }
+    annotation_log
   }
 }
