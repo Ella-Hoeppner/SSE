@@ -173,9 +173,18 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       None => std::mem::swap(self, &mut replacement),
     }
   }
-  pub fn replace_subtree(&mut self, path: Vec<usize>, replacement: Self) {
+  pub fn replace_subtree(
+    &mut self,
+    path: Vec<usize>,
+    path_prefix: Vec<usize>,
+    replacement: Self,
+  ) {
     let modify_pos = |mut pos: DocumentPosition| {
-      pos.path = path.iter().copied().chain(pos.path.into_iter()).collect();
+      pos.path = path_prefix
+        .iter()
+        .cloned()
+        .chain(path.iter().copied().chain(pos.path.into_iter()))
+        .collect();
       pos
     };
     let modified_replacement = replacement.map_owned(
