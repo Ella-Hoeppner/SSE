@@ -41,7 +41,7 @@ impl<E: Encloser, O: Operator> ContainsEncloserOrOperator<E, O>
 }
 
 impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
-  fn from_raw_ast_inner<
+  pub fn from_raw_ast_with_path<
     L: Clone + PartialEq + Debug,
     I: Clone + PartialEq + Debug + ContainsEncloserOrOperator<E, O>,
   >(
@@ -57,7 +57,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
           .into_iter()
           .enumerate()
           .map(|(i, child)| {
-            Self::from_raw_ast_inner(child, {
+            Self::from_raw_ast_with_path(child, {
               let mut new_path = path.clone();
               new_path.push(i);
               new_path
@@ -80,7 +80,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
   >(
     ast: Ast<L, I>,
   ) -> Self {
-    Self::from_raw_ast_inner(ast, vec![])
+    Self::from_raw_ast_with_path(ast, vec![])
   }
   pub fn position(&self) -> &DocumentPosition {
     match self {
