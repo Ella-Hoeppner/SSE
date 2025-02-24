@@ -1,5 +1,3 @@
-#![feature(assert_matches)]
-
 mod ast;
 pub mod document;
 pub mod examples;
@@ -32,8 +30,6 @@ pub fn standard_whitespace_chars() -> Vec<String> {
 
 #[cfg(test)]
 mod core_tests {
-  use std::assert_matches::assert_matches;
-
   use crate::{
     ast::RawAst,
     document::{
@@ -1019,10 +1015,12 @@ mod core_tests {
     .unwrap();
     doc.strip_comments();
     assert!(doc.syntax_trees.len() == 1);
-    assert_matches!(
-      doc.syntax_trees[0],
-      Ast::Inner((_, EncloserOrOperator::Encloser(CljEncloser::List)), _)
-    );
+    let Ast::Inner((_, EncloserOrOperator::Encloser(CljEncloser::List)), _) =
+      doc.syntax_trees[0]
+    else {
+      assert!(false);
+      panic!()
+    };
     if let Ast::Inner((_, _), children) = doc.syntax_trees.remove(0) {
       assert!(children.len() == 3)
     } else {
