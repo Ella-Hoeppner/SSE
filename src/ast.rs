@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::{syntax::EncloserOrOperator, Encloser, Operator};
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum Ast<
   LeafData: Clone + PartialEq + Debug,
   InnerData: Clone + PartialEq + Debug,
