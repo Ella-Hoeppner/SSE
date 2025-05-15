@@ -75,6 +75,45 @@ impl<
       None
     }
   }
+  pub(crate) fn innermost_partial_predicate_reverse_path(
+    &self,
+    predicate: &impl Fn(&Self) -> Option<bool>,
+  ) -> Option<Vec<usize>> {
+    let result = predicate(self);
+    if result == Some(false) {
+      return None;
+    }
+    match self {
+      Ast::Leaf(_, _) => result.map(|_| vec![]),
+      Ast::Inner(_, children) => {
+        if let Some(x) = children.iter().enumerate().find_map(|(i, child)| {
+          child
+            .innermost_partial_predicate_reverse_path(predicate)
+            .map(|mut reverse_path| {
+              reverse_path.push(i);
+              reverse_path
+            })
+        }) {
+          Some(x)
+        } else {
+          result.map(|_| vec![])
+        }
+      }
+    }
+  }
+  pub fn innermost_partial_predicate_path(
+    &self,
+    predicate: &impl Fn(&Self) -> Option<bool>,
+  ) -> Option<Vec<usize>> {
+    if let Some(mut reverse_path) =
+      self.innermost_partial_predicate_reverse_path(predicate)
+    {
+      reverse_path.reverse();
+      Some(reverse_path)
+    } else {
+      None
+    }
+  }
   pub fn map<
     NewLeafData: Clone + PartialEq + Eq + Debug,
     NewInnerData: Clone + PartialEq + Eq + Debug,
