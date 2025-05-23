@@ -7,6 +7,7 @@ mod parser;
 pub mod str_tagged;
 pub mod syntax;
 pub use ast::Ast;
+pub use ast::InvalidTreePath;
 pub use ast::RawAst;
 pub use ast::SyntaxTree;
 pub use document::DocumentSyntaxTree;
