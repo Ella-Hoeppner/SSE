@@ -12,7 +12,7 @@ pub enum Ast<
   Inner(InnerData, Vec<Ast<LeafData, InnerData>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InvalidTreePath;
 
 impl<
