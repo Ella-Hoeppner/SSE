@@ -39,8 +39,33 @@ impl<
       Ok(self)
     }
   }
+  pub(crate) fn get_subtree_inner_mut(
+    &mut self,
+    mut path: impl Iterator<Item = usize>,
+  ) -> Result<&mut Self, InvalidTreePath> {
+    if let Some(child_index) = path.next() {
+      match self {
+        Ast::Leaf(_, _) => Err(InvalidTreePath),
+        Ast::Inner(_, children) => {
+          if let Some(child) = children.get_mut(child_index) {
+            child.get_subtree_inner_mut(path)
+          } else {
+            Err(InvalidTreePath)
+          }
+        }
+      }
+    } else {
+      Ok(self)
+    }
+  }
   pub fn get_subtree(&self, path: &[usize]) -> Result<&Self, InvalidTreePath> {
     self.get_subtree_inner(path.iter().copied())
+  }
+  pub fn get_subtree_mut(
+    &mut self,
+    path: &[usize],
+  ) -> Result<&mut Self, InvalidTreePath> {
+    self.get_subtree_inner_mut(path.iter().copied())
   }
   pub(crate) fn innermost_predicate_reverse_path(
     &self,
