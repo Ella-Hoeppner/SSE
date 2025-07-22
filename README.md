@@ -4,7 +4,6 @@ A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
 * diffs:
-  * snippet-level diffs
   * diff reversal, for undo/redo functionality
 
 * don't include comments in left/right consumption counts for operators

@@ -8,7 +8,7 @@ use crate::{
   Ast, Encloser, Operator, ParseError, Parser, RawAst, SyntaxGraph, SyntaxTree,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct DocumentPosition {
   pub span: Range<usize>,
   pub path: Vec<usize>,

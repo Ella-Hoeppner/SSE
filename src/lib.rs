@@ -1258,4 +1258,64 @@ mod core_tests {
       )],
     );
   }
+
+  #[test]
+  fn diff_insert_snippet() {
+    test_diff(
+      "(+ (* 1 2) (* 3 4))",
+      "(+ (- (* 1 2)) (* 3 4))",
+      vec![AstDiff::InsertSnippet(
+        vec![0, 1],
+        AstSource::New(
+          Parser::new(clj_graph(), "(- _)")
+            .read_next()
+            .unwrap()
+            .unwrap(),
+        ),
+        vec![1],
+      )],
+    );
+    test_diff(
+      "(+ (* 1 2) (* 3 4))",
+      "(+ (- (- (* 1 2))) (* 3 4))",
+      vec![AstDiff::InsertSnippet(
+        vec![0, 1],
+        AstSource::New(
+          Parser::new(clj_graph(), "(- (- _))")
+            .read_next()
+            .unwrap()
+            .unwrap(),
+        ),
+        vec![1, 1],
+      )],
+    );
+    test_diff(
+      "(+ (* 1 2) (* 3 4))",
+      "(- (+ (* 1 2) (* 3 4)))",
+      vec![AstDiff::InsertSnippet(
+        vec![0],
+        AstSource::New(
+          Parser::new(clj_graph(), "(- _)")
+            .read_next()
+            .unwrap()
+            .unwrap(),
+        ),
+        vec![1],
+      )],
+    );
+  }
+
+  #[test]
+  fn diff_delete_snippet() {
+    test_diff(
+      "(+ (* 1 2) (* 3 4))",
+      "(+ 1 (* 3 4))",
+      vec![AstDiff::DeleteSnippet(vec![0, 1], vec![1])],
+    );
+    test_diff(
+      "(+ (* 1 2) (* 3 4))",
+      "1",
+      vec![AstDiff::DeleteSnippet(vec![0], vec![1, 1])],
+    );
+  }
 }
