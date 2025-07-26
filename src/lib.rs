@@ -1318,4 +1318,201 @@ mod core_tests {
       vec![AstDiff::DeleteSnippet(vec![0], vec![1, 1])],
     );
   }
+
+  fn test_diff_reverse(
+    base_source: &str,
+    diffs: Vec<
+      AstDiff<
+        DocumentPosition,
+        (
+          DocumentPosition,
+          EncloserOrOperator<CljEncloser, CljOperator>,
+        ),
+      >,
+    >,
+  ) {
+    let base_document =
+      Document::from_text_with_syntax(clj_graph(), base_source).unwrap();
+    let mut modified_document = base_document.clone();
+    let mut reverse_diffs = vec![];
+    for diff in diffs {
+      reverse_diffs
+        .push(diff.reverse(&modified_document.syntax_trees).unwrap());
+      diff.apply(&mut modified_document.syntax_trees).unwrap();
+    }
+    while let Some(diff) = reverse_diffs.pop() {
+      diff.apply(&mut modified_document.syntax_trees).unwrap();
+    }
+    let strip = |doc: Document<_, _, _>| {
+      doc
+        .syntax_trees
+        .into_iter()
+        .map(|tree| {
+          tree.map_owned(&|_, leaf| ((), leaf), &|a| {
+            a.into_encloser_or_operator()
+          })
+        })
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(strip(base_document), strip(modified_document))
+  }
+
+  #[test]
+  fn diff_insert_reverse() {
+    test_diff_reverse(
+      "",
+      vec![AstDiff::Insert(
+        vec![0],
+        AstSource::New(
+          Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
+        ),
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Insert(
+        vec![0],
+        AstSource::New(
+          Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
+        ),
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Insert(
+        vec![0, 0],
+        AstSource::New(
+          Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
+        ),
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Insert(
+        vec![1],
+        AstSource::New(
+          Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
+        ),
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Insert(vec![1], AstSource::Existing(vec![0]))],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Insert(vec![1], AstSource::Existing(vec![0, 1]))],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![
+        AstDiff::Insert(vec![1], AstSource::Existing(vec![0])),
+        AstDiff::Insert(
+          vec![1],
+          AstSource::New(
+            Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  #[test]
+  fn diff_delete_reverse() {
+    test_diff_reverse("(+ (* 1 2) (* 3 4))", vec![AstDiff::Delete(vec![0])]);
+    test_diff_reverse("1 2 3", vec![AstDiff::Delete(vec![0])]);
+    test_diff_reverse(
+      "1 2 3",
+      vec![AstDiff::Delete(vec![0]), AstDiff::Delete(vec![1])],
+    );
+    test_diff_reverse("(+ (* 1 2) (* 3 4))", vec![AstDiff::Delete(vec![0, 1])]);
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Delete(vec![0, 1, 0])],
+    );
+  }
+
+  #[test]
+  fn diff_replace_reverse() {
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Replace(
+        vec![0],
+        AstSource::New(
+          Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
+        ),
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Replace(
+        vec![0, 1],
+        AstSource::New(
+          Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
+        ),
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::Replace(
+        vec![0, 1, 2],
+        AstSource::Existing(vec![0]),
+      )],
+    );
+  }
+
+  #[test]
+  fn diff_insert_snippet_reverse() {
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::InsertSnippet(
+        vec![0, 1],
+        AstSource::New(
+          Parser::new(clj_graph(), "(- _)")
+            .read_next()
+            .unwrap()
+            .unwrap(),
+        ),
+        vec![1],
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::InsertSnippet(
+        vec![0, 1],
+        AstSource::New(
+          Parser::new(clj_graph(), "(- (- _))")
+            .read_next()
+            .unwrap()
+            .unwrap(),
+        ),
+        vec![1, 1],
+      )],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::InsertSnippet(
+        vec![0],
+        AstSource::New(
+          Parser::new(clj_graph(), "(- _)")
+            .read_next()
+            .unwrap()
+            .unwrap(),
+        ),
+        vec![1],
+      )],
+    );
+  }
+
+  #[test]
+  fn diff_delete_snippet_reverse() {
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::DeleteSnippet(vec![0, 1], vec![1])],
+    );
+    test_diff_reverse(
+      "(+ (* 1 2) (* 3 4))",
+      vec![AstDiff::DeleteSnippet(vec![0], vec![1, 1])],
+    );
+  }
 }

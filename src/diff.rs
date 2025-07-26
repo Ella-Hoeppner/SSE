@@ -32,6 +32,16 @@ impl<
   }
 }
 
+impl<
+    L: Clone + PartialEq + Eq + Debug + Default,
+    I: Clone + PartialEq + Eq + Debug,
+  > From<Ast<L, I>> for AstSource<L, I>
+{
+  fn from(ast: Ast<L, I>) -> Self {
+    AstSource::New(ast)
+  }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum AstDiff<
   L: Clone + PartialEq + Eq + Debug + Default,
@@ -224,5 +234,29 @@ impl<
         trees: trees.clone(),
       })
     }
+  }
+  pub fn reverse(
+    &self,
+    trees: &Vec<Ast<L, I>>,
+  ) -> Result<Self, InvalidTreePath> {
+    Ok(match self {
+      AstDiff::Insert(path, _) => AstDiff::Delete(path.clone()),
+      AstDiff::Delete(path) => AstDiff::Insert(
+        path.clone(),
+        trees[path[0]].get_subtree(&path[1..])?.clone().into(),
+      ),
+      AstDiff::Replace(path, _) => AstDiff::Replace(
+        path.clone(),
+        trees[path[0]].get_subtree(&path[1..])?.clone().into(),
+      ),
+      AstDiff::InsertSnippet(path, _, sub_path) => {
+        AstDiff::DeleteSnippet(path.clone(), sub_path.clone())
+      }
+      AstDiff::DeleteSnippet(path, sub_path) => AstDiff::InsertSnippet(
+        path.clone(),
+        trees[path[0]].get_subtree(&path[1..])?.clone().into(),
+        sub_path.clone(),
+      ),
+    })
   }
 }
