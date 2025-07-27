@@ -50,7 +50,6 @@ mod core_tests {
     syntax::ContainsEncloserOrOperator,
     Ast, DocumentSyntaxTree, EncloserOrOperator, ParseError, Parser,
   };
-  use std::fmt::Debug;
 
   fn leaf(s: String) -> RawAst {
     RawAst::leaf(s)
@@ -1144,7 +1143,7 @@ mod core_tests {
     test_diff(
       "",
       "5",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1154,7 +1153,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "5 (+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1164,7 +1163,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(5 + (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![0, 0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1174,7 +1173,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (* 1 2) (* 3 4)) 5",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![1],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1184,19 +1183,19 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (* 1 2) (* 3 4)) (+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(vec![1], AstSource::Existing(vec![0]))],
+      vec![AstDiff::insert(vec![1], AstSource::Existing(vec![0]))],
     );
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (* 1 2) (* 3 4)) (* 1 2)",
-      vec![AstDiff::Insert(vec![1], AstSource::Existing(vec![0, 1]))],
+      vec![AstDiff::insert(vec![1], AstSource::Existing(vec![0, 1]))],
     );
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (* 1 2) (* 3 4)) 5 (+ (* 1 2) (* 3 4))",
       vec![
-        AstDiff::Insert(vec![1], AstSource::Existing(vec![0])),
-        AstDiff::Insert(
+        AstDiff::insert(vec![1], AstSource::Existing(vec![0])),
+        AstDiff::insert(
           vec![1],
           AstSource::New(
             Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1208,22 +1207,22 @@ mod core_tests {
 
   #[test]
   fn diff_delete() {
-    test_diff("(+ (* 1 2) (* 3 4))", "", vec![AstDiff::Delete(vec![0])]);
-    test_diff("1 2 3", "2 3", vec![AstDiff::Delete(vec![0])]);
+    test_diff("(+ (* 1 2) (* 3 4))", "", vec![AstDiff::delete(vec![0])]);
+    test_diff("1 2 3", "2 3", vec![AstDiff::delete(vec![0])]);
     test_diff(
       "1 2 3",
       "2",
-      vec![AstDiff::Delete(vec![0]), AstDiff::Delete(vec![1])],
+      vec![AstDiff::delete(vec![0]), AstDiff::delete(vec![1])],
     );
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (* 3 4))",
-      vec![AstDiff::Delete(vec![0, 1])],
+      vec![AstDiff::delete(vec![0, 1])],
     );
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (1 2) (* 3 4))",
-      vec![AstDiff::Delete(vec![0, 1, 0])],
+      vec![AstDiff::delete(vec![0, 1, 0])],
     );
   }
 
@@ -1232,7 +1231,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "5",
-      vec![AstDiff::Replace(
+      vec![AstDiff::replace(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1242,7 +1241,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ 5 (* 3 4))",
-      vec![AstDiff::Replace(
+      vec![AstDiff::replace(
         vec![0, 1],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1252,7 +1251,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (* 1 (+ (* 1 2) (* 3 4))) (* 3 4))",
-      vec![AstDiff::Replace(
+      vec![AstDiff::replace(
         vec![0, 1, 2],
         AstSource::Existing(vec![0]),
       )],
@@ -1264,7 +1263,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (- (* 1 2)) (* 3 4))",
-      vec![AstDiff::InsertSnippet(
+      vec![AstDiff::insert_snippet(
         vec![0, 1],
         AstSource::New(
           Parser::new(clj_graph(), "(- _)")
@@ -1278,7 +1277,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ (- (- (* 1 2))) (* 3 4))",
-      vec![AstDiff::InsertSnippet(
+      vec![AstDiff::insert_snippet(
         vec![0, 1],
         AstSource::New(
           Parser::new(clj_graph(), "(- (- _))")
@@ -1292,7 +1291,7 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(- (+ (* 1 2) (* 3 4)))",
-      vec![AstDiff::InsertSnippet(
+      vec![AstDiff::insert_snippet(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "(- _)")
@@ -1310,16 +1309,16 @@ mod core_tests {
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "(+ 1 (* 3 4))",
-      vec![AstDiff::DeleteSnippet(vec![0, 1], vec![1])],
+      vec![AstDiff::delete_snippet(vec![0, 1], vec![1])],
     );
     test_diff(
       "(+ (* 1 2) (* 3 4))",
       "1",
-      vec![AstDiff::DeleteSnippet(vec![0], vec![1, 1])],
+      vec![AstDiff::delete_snippet(vec![0], vec![1, 1])],
     );
   }
 
-  fn test_diff_reverse(
+  fn test_diff_inverse(
     base_source: &str,
     diffs: Vec<
       AstDiff<
@@ -1334,13 +1333,16 @@ mod core_tests {
     let base_document =
       Document::from_text_with_syntax(clj_graph(), base_source).unwrap();
     let mut modified_document = base_document.clone();
-    let mut reverse_diffs = vec![];
+    let mut inverse_diffs = vec![];
     for diff in diffs {
-      reverse_diffs
-        .push(diff.reverse(&modified_document.syntax_trees).unwrap());
+      inverse_diffs.push(
+        diff
+          .inverse::<Ast<_, _>>(&modified_document.syntax_trees)
+          .unwrap(),
+      );
       diff.apply(&mut modified_document.syntax_trees).unwrap();
     }
-    while let Some(diff) = reverse_diffs.pop() {
+    while let Some(diff) = inverse_diffs.pop() {
       diff.apply(&mut modified_document.syntax_trees).unwrap();
     }
     let strip = |doc: Document<_, _, _>| {
@@ -1358,56 +1360,56 @@ mod core_tests {
   }
 
   #[test]
-  fn diff_insert_reverse() {
-    test_diff_reverse(
+  fn diff_insert_inverse() {
+    test_diff_inverse(
       "",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
         ),
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
         ),
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![0, 0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
         ),
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(
+      vec![AstDiff::insert(
         vec![1],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
         ),
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(vec![1], AstSource::Existing(vec![0]))],
+      vec![AstDiff::insert(vec![1], AstSource::Existing(vec![0]))],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Insert(vec![1], AstSource::Existing(vec![0, 1]))],
+      vec![AstDiff::insert(vec![1], AstSource::Existing(vec![0, 1]))],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
       vec![
-        AstDiff::Insert(vec![1], AstSource::Existing(vec![0])),
-        AstDiff::Insert(
+        AstDiff::insert(vec![1], AstSource::Existing(vec![0])),
+        AstDiff::insert(
           vec![1],
           AstSource::New(
             Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
@@ -1418,43 +1420,43 @@ mod core_tests {
   }
 
   #[test]
-  fn diff_delete_reverse() {
-    test_diff_reverse("(+ (* 1 2) (* 3 4))", vec![AstDiff::Delete(vec![0])]);
-    test_diff_reverse("1 2 3", vec![AstDiff::Delete(vec![0])]);
-    test_diff_reverse(
+  fn diff_delete_inverse() {
+    test_diff_inverse("(+ (* 1 2) (* 3 4))", vec![AstDiff::delete(vec![0])]);
+    test_diff_inverse("1 2 3", vec![AstDiff::delete(vec![0])]);
+    test_diff_inverse(
       "1 2 3",
-      vec![AstDiff::Delete(vec![0]), AstDiff::Delete(vec![1])],
+      vec![AstDiff::delete(vec![0]), AstDiff::delete(vec![1])],
     );
-    test_diff_reverse("(+ (* 1 2) (* 3 4))", vec![AstDiff::Delete(vec![0, 1])]);
-    test_diff_reverse(
+    test_diff_inverse("(+ (* 1 2) (* 3 4))", vec![AstDiff::delete(vec![0, 1])]);
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Delete(vec![0, 1, 0])],
+      vec![AstDiff::delete(vec![0, 1, 0])],
     );
   }
 
   #[test]
-  fn diff_replace_reverse() {
-    test_diff_reverse(
+  fn diff_replace_inverse() {
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Replace(
+      vec![AstDiff::replace(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
         ),
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Replace(
+      vec![AstDiff::replace(
         vec![0, 1],
         AstSource::New(
           Parser::new(clj_graph(), "5").read_next().unwrap().unwrap(),
         ),
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::Replace(
+      vec![AstDiff::replace(
         vec![0, 1, 2],
         AstSource::Existing(vec![0]),
       )],
@@ -1462,10 +1464,10 @@ mod core_tests {
   }
 
   #[test]
-  fn diff_insert_snippet_reverse() {
-    test_diff_reverse(
+  fn diff_insert_snippet_inverse() {
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::InsertSnippet(
+      vec![AstDiff::insert_snippet(
         vec![0, 1],
         AstSource::New(
           Parser::new(clj_graph(), "(- _)")
@@ -1476,9 +1478,9 @@ mod core_tests {
         vec![1],
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::InsertSnippet(
+      vec![AstDiff::insert_snippet(
         vec![0, 1],
         AstSource::New(
           Parser::new(clj_graph(), "(- (- _))")
@@ -1489,9 +1491,9 @@ mod core_tests {
         vec![1, 1],
       )],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::InsertSnippet(
+      vec![AstDiff::insert_snippet(
         vec![0],
         AstSource::New(
           Parser::new(clj_graph(), "(- _)")
@@ -1505,14 +1507,14 @@ mod core_tests {
   }
 
   #[test]
-  fn diff_delete_snippet_reverse() {
-    test_diff_reverse(
+  fn diff_delete_snippet_inverse() {
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::DeleteSnippet(vec![0, 1], vec![1])],
+      vec![AstDiff::delete_snippet(vec![0, 1], vec![1])],
     );
-    test_diff_reverse(
+    test_diff_inverse(
       "(+ (* 1 2) (* 3 4))",
-      vec![AstDiff::DeleteSnippet(vec![0], vec![1, 1])],
+      vec![AstDiff::delete_snippet(vec![0], vec![1, 1])],
     );
   }
 }
