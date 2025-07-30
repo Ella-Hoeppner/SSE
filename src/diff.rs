@@ -1,6 +1,10 @@
 use crate::{Ast, InvalidTreePath};
 use std::fmt::Debug;
 
+fn is_prefix_of(a: &[usize], b: &[usize]) -> bool {
+  a.len() < b.len() && a.iter().zip(b.iter()).find(|(a, b)| a != b).is_none()
+}
+
 pub trait AstWrapper<
   L: Clone + PartialEq + Eq + Debug,
   I: Clone + PartialEq + Eq + Debug,
@@ -36,6 +40,25 @@ pub enum AstSource<
   Existing(Path),
 }
 
+impl<
+    L: Clone + PartialEq + Eq + Debug,
+    I: Clone + PartialEq + Eq + Debug,
+    P: Into<Path>,
+  > From<P> for AstSource<I, L>
+{
+  fn from(path: P) -> Self {
+    Self::Existing(path.into())
+  }
+}
+
+impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
+  From<Ast<L, I>> for AstSource<L, I>
+{
+  fn from(ast: Ast<L, I>) -> Self {
+    AstSource::New(ast)
+  }
+}
+
 impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
   AstSource<L, I>
 {
@@ -67,14 +90,6 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
   }
 }
 
-impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
-  From<Ast<L, I>> for AstSource<L, I>
-{
-  fn from(wrapped_ast: Ast<L, I>) -> Self {
-    AstSource::New(wrapped_ast)
-  }
-}
-
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AstDiff<
   L: Clone + PartialEq + Eq + Debug,
@@ -97,43 +112,56 @@ pub enum AstDiffOp<
 }
 
 #[derive(Debug)]
-enum Bottom {}
+enum Never {}
 
 impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
   AstDiff<L, I>
 {
-  pub fn insert(path: Path, source: AstSource<L, I>) -> Self {
+  pub fn insert<P: Into<Path>, S: Into<AstSource<L, I>>>(
+    path: P,
+    source: S,
+  ) -> Self {
     Self {
-      path,
-      op: AstDiffOp::Insert(source),
+      path: path.into(),
+      op: AstDiffOp::Insert(source.into()),
     }
   }
-  pub fn delete(path: Path) -> Self {
+  pub fn delete<P: Into<Path>>(path: P) -> Self {
     Self {
-      path,
+      path: path.into(),
       op: AstDiffOp::Delete,
     }
   }
-  pub fn replace(path: Path, source: AstSource<L, I>) -> Self {
-    Self {
-      path,
-      op: AstDiffOp::Replace(source),
-    }
-  }
-  pub fn insert_snippet(
-    path: Path,
-    source: AstSource<L, I>,
-    sub_path: Path,
+  pub fn replace<P: Into<Path>, S: Into<AstSource<L, I>>>(
+    path: P,
+    source: S,
   ) -> Self {
     Self {
-      path,
-      op: AstDiffOp::InsertSnippet(source, sub_path),
+      path: path.into(),
+      op: AstDiffOp::Replace(source.into()),
     }
   }
-  pub fn delete_snippet(path: Path, sub_path: Path) -> Self {
+  pub fn insert_snippet<
+    P1: Into<Path>,
+    P2: Into<Path>,
+    S: Into<AstSource<L, I>>,
+  >(
+    path: P1,
+    source: S,
+    sub_path: P2,
+  ) -> Self {
     Self {
-      path,
-      op: AstDiffOp::DeleteSnippet(sub_path),
+      path: path.into(),
+      op: AstDiffOp::InsertSnippet(source.into(), sub_path.into()),
+    }
+  }
+  pub fn delete_snippet<P1: Into<Path>, P2: Into<Path>>(
+    path: P1,
+    sub_path: P2,
+  ) -> Self {
+    Self {
+      path: path.into(),
+      op: AstDiffOp::DeleteSnippet(sub_path.into()),
     }
   }
   pub fn apply<'a: 'b, 'b, W: AstWrapper<L, I>>(
@@ -398,7 +426,78 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
     ast_mapper: &impl Fn(Ast<L, I>, &Vec<usize>) -> Ast<NewL, NewI>,
   ) -> AstDiff<NewL, NewI> {
     self
-      .try_map(&|ast, path| Ok::<_, Bottom>(ast_mapper(ast, path)))
+      .try_map(&|ast, path| Ok::<_, Never>(ast_mapper(ast, path)))
       .unwrap()
+  }
+  fn modify_paths<E>(
+    &mut self,
+    modifier: &impl Fn(Path) -> Result<Path, E>,
+  ) -> Result<(), E> {
+    self.path = modifier(self.path.clone())?;
+    match &mut self.op {
+      AstDiffOp::Insert(ast_source)
+      | AstDiffOp::Replace(ast_source)
+      | AstDiffOp::InsertSnippet(ast_source, _) => match ast_source {
+        AstSource::Existing(path) => {
+          *path = modifier(path.clone())?;
+        }
+        _ => {}
+      },
+      _ => {}
+    }
+    Ok(())
+  }
+  pub fn sequentialize(mut diffs: Vec<Self>) -> Result<Vec<Self>, ()> {
+    // Takes a vector of diffs describing a set of "simultaneous" changes
+    // modifies them such that they can be safely applied in a sequential order.
+    // The diffs are expected to be "simulatneous" in the sense that the paths
+    // within them refer to the original tree, rather than the tree that would
+    // be produced by applying the earlier diffs within the list.
+    //
+    // Returns an error if there is no way to resolve the simultaneous
+    // modifications (i.e. a merge conflict)
+    for i in 0..diffs.len() {
+      let path = diffs[i].path.clone();
+      match &diffs[i].op {
+        AstDiffOp::Insert(_) => {
+          for diff in diffs.iter_mut().skip(i + 1) {
+            diff
+              .modify_paths::<Never>(&|mut other_path| {
+                if is_prefix_of(&path[0..path.len() - 1], &other_path)
+                  && *path.last().unwrap() <= other_path[path.len() - 1]
+                {
+                  other_path[path.len() - 1] += 1;
+                }
+                Ok(other_path)
+              })
+              .unwrap()
+          }
+        }
+        AstDiffOp::Delete => {
+          for diff in diffs.iter_mut().skip(i + 1) {
+            diff.modify_paths(&|mut other_path| {
+              if is_prefix_of(&path, &other_path) {
+                return Err(());
+              } else if is_prefix_of(&path[0..path.len() - 1], &other_path)
+                && *path.last().unwrap() <= other_path[path.len() - 1]
+              {
+                other_path[path.len() - 1] -= 1;
+              }
+              Ok(other_path)
+            })?;
+          }
+        }
+        AstDiffOp::Replace(_) => {
+          //todo!()
+        }
+        AstDiffOp::InsertSnippet(_, _) => {
+          //todo!()
+        }
+        AstDiffOp::DeleteSnippet(_) => {
+          //todo!()
+        }
+      }
+    }
+    Ok(diffs)
   }
 }

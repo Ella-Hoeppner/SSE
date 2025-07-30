@@ -3,9 +3,6 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
-* diffs:
-  * diff reversal, for undo/redo functionality
-
 * don't include comments in left/right consumption counts for operators
 
 low priority:
