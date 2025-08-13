@@ -240,7 +240,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
               if index >= trees.len() {
                 break 'breakable false;
               }
-              trees[index] = W::from_raw(tree);
+              let _ = std::mem::replace(trees[index].ast_mut(), tree);
               true
             }
             n => {
@@ -314,10 +314,9 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
             else {
               break 'breakable false;
             };
-            std::mem::swap(
-              &mut W::from_raw(remaining_subtree.clone()),
-              &mut trees[index],
-            );
+            let remaining_subtree = remaining_subtree.clone();
+            let _ =
+              std::mem::replace(trees[index].ast_mut(), remaining_subtree);
             true
           }
           n => {
