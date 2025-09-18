@@ -264,6 +264,14 @@ impl<
       path
     })
   }
+  pub fn walk(&self, f: &mut impl FnMut(&Self)) {
+    f(self);
+    if let Self::Inner(_, children) = self {
+      for child in children {
+        child.walk(f);
+      }
+    }
+  }
 }
 
 pub type RawAst = Ast<(), ()>;
