@@ -4,7 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
   document::{DocumentPosition, DocumentSyntaxTree},
-  syntax::{Context, Encloser, EncloserOrOperator, Operator, SyntaxGraph},
+  syntax::{Encloser, EncloserOrOperator, Operator, Syntax},
 };
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
@@ -36,34 +36,45 @@ impl Display for ParseError {
   }
 }
 
-pub(crate) struct Parse<'t, 'g, C: Context, E: Encloser, O: Operator> {
+pub(crate) struct Parse<'t, 's, S: Syntax> {
   text: &'t str,
-  inherited_top_level_asts: Vec<DocumentSyntaxTree<E, O>>,
-  syntax_graph: &'g SyntaxGraph<C, E, O>,
+  syntax: &'s S,
+  inherited_top_level_asts: Vec<DocumentSyntaxTree<S::E, S::O>>,
   open_asts: Vec<(
     usize,
-    EncloserOrOperator<E, O>,
-    Vec<DocumentSyntaxTree<E, O>>,
+    EncloserOrOperator<S::E, S::O>,
+    Vec<DocumentSyntaxTree<S::E, S::O>>,
   )>,
 }
 
-impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
+impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
   pub(crate) fn new(
-    syntax_graph: &'g SyntaxGraph<C, E, O>,
-    inherited_top_level_asts: Vec<DocumentSyntaxTree<E, O>>,
+    inherited_top_level_asts: Vec<DocumentSyntaxTree<S::E, S::O>>,
+    syntax: &'s S,
     text: &'t str,
   ) -> Self {
     Self {
       text,
+      syntax,
       inherited_top_level_asts,
-      syntax_graph,
       open_asts: vec![],
     }
   }
+  fn active_context(&self) -> S::C {
+    self
+      .open_asts
+      .last()
+      .map(|(_, encloser_or_operator, _)| {
+        self
+          .syntax
+          .enclose_or_operator_context(encloser_or_operator)
+      })
+      .unwrap_or(self.syntax.root_context())
+  }
   fn consume_left_asts(
     &mut self,
-    operator: &O,
-  ) -> Result<Vec<DocumentSyntaxTree<E, O>>, ParseError> {
+    operator: &S::O,
+  ) -> Result<Vec<DocumentSyntaxTree<S::E, S::O>>, ParseError> {
     let n = operator.left_args();
     if n == 0 {
       Ok(vec![])
@@ -94,7 +105,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
   fn close_ast(
     &mut self,
     closing_index: usize,
-  ) -> Option<DocumentSyntaxTree<E, O>> {
+  ) -> Option<DocumentSyntaxTree<S::E, S::O>> {
     let (opening_index, encloser_or_operator, subtrees) = self
       .open_asts
       .pop()
@@ -109,8 +120,8 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
   }
   fn push_closed_ast(
     &mut self,
-    ast: DocumentSyntaxTree<E, O>,
-  ) -> Option<DocumentSyntaxTree<E, O>> {
+    ast: DocumentSyntaxTree<S::E, S::O>,
+  ) -> Option<DocumentSyntaxTree<S::E, S::O>> {
     if let Some((_, encloser_or_operator, subtrees)) = self.open_asts.last_mut()
     {
       let end = ast.position().end();
@@ -130,7 +141,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
       Some(ast)
     }
   }
-  fn awaited_closer(&'g self) -> Option<&'g str> {
+  fn awaited_closer<'a>(&'a self) -> Option<&'a str> {
     self
       .open_asts
       .iter()
@@ -148,7 +159,10 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
     mut self,
     already_parsed_index: usize,
   ) -> Result<
-    Result<Vec<DocumentSyntaxTree<E, O>>, Vec<DocumentSyntaxTree<E, O>>>,
+    Result<
+      Vec<DocumentSyntaxTree<S::E, S::O>>,
+      Vec<DocumentSyntaxTree<S::E, S::O>>,
+    >,
     ParseError,
   > {
     let beginning_index = self
@@ -173,22 +187,26 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
     {
       let character_index = beginning_index + character_index_offset;
 
+      macro_rules! push_ast_and_maybe_return {
+        ($ast:expr) => {
+          if let Some(completed_ast) = self.push_closed_ast($ast) {
+            let mut top_level_asts = self.inherited_top_level_asts;
+            top_level_asts.push(completed_ast);
+            return Ok(Ok(top_level_asts));
+          }
+        };
+      }
+
       macro_rules! finish_terminal {
         () => {
           if let Some(terminal_beginning) = current_terminal_beginning {
-            if let Some(completed_ast) =
-              self.push_closed_ast(DocumentSyntaxTree::Leaf(
-                DocumentPosition::new(
-                  terminal_beginning..character_index,
-                  vec![],
-                ),
-                self.text[terminal_beginning..character_index].to_string(),
-              ))
-            {
-              let mut top_level_asts = self.inherited_top_level_asts;
-              top_level_asts.push(completed_ast);
-              return Ok(Ok(top_level_asts));
-            }
+            push_ast_and_maybe_return!(DocumentSyntaxTree::Leaf(
+              DocumentPosition::new(
+                terminal_beginning..character_index,
+                vec![],
+              ),
+              self.text[terminal_beginning..character_index].to_string(),
+            ));
             current_terminal_beginning = None;
           }
         };
@@ -201,13 +219,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
         };
       }
 
-      let active_context = self.syntax_graph.get_context(
-        self
-          .open_asts
-          .last()
-          .map(|(_, tag, _)| self.syntax_graph.get_context_tag(tag))
-          .unwrap_or(&self.syntax_graph.root),
-      );
+      let active_context = self.syntax.context(&self.active_context());
 
       if escaped {
         escaped = false;
@@ -224,6 +236,26 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
         finish_terminal!();
       } else {
         let remaining_text = &self.text[character_index..];
+
+        let active_context_tag = self.active_context();
+
+        let mut matched_reserved = false;
+        for reserved_token in self.syntax.reserved_tokens() {
+          if remaining_text.starts_with(reserved_token) {
+            push_ast_and_maybe_return!(DocumentSyntaxTree::Leaf(
+              DocumentPosition::new(
+                character_index..character_index + reserved_token.len(),
+                vec![],
+              ),
+              reserved_token.to_string(),
+            ));
+            skip_n_chars!(reserved_token.len());
+            matched_reserved = true;
+          }
+        }
+        if matched_reserved {
+          continue;
+        }
 
         if let Some(awaited_closer) = self.awaited_closer() {
           if remaining_text.starts_with(awaited_closer) {
@@ -251,17 +283,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
           }
         }
 
-        let active_context_tag = self
-          .open_asts
-          .last()
-          .map(|(_, tag, _)| self.syntax_graph.get_context_tag(tag))
-          .unwrap_or(&self.syntax_graph.root);
-
-        for encloser in self
-          .syntax_graph
-          .get_context(active_context_tag)
-          .enclosers()
-        {
+        for encloser in self.syntax.context(&active_context_tag).enclosers() {
           let beginning_marker = encloser.opening_encloser_str();
           if remaining_text.starts_with(beginning_marker) {
             finish_terminal!();
@@ -275,11 +297,7 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
           }
         }
 
-        for operator in self
-          .syntax_graph
-          .get_context(active_context_tag)
-          .operators()
-        {
+        for operator in self.syntax.context(&active_context_tag).operators() {
           let op_marker = operator.op_str();
           if remaining_text.starts_with(op_marker) {
             finish_terminal!();
@@ -304,10 +322,11 @@ impl<'t, 'g, C: Context, E: Encloser, O: Operator> Parse<'t, 'g, C, E, O> {
           }
         }
 
-        for closer in self.syntax_graph.get_closers(active_context_tag) {
-          if remaining_text.starts_with(closer) {
-            return Err(ParseError::UnexpectedCloser(closer.to_string()));
-          }
+        if let Some(closer) = self
+          .syntax
+          .prefix_closer_in_context(&active_context_tag, remaining_text)
+        {
+          return Err(ParseError::UnexpectedCloser(closer.to_string()));
         }
 
         if current_terminal_beginning.is_none() {

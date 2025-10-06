@@ -1,17 +1,17 @@
-use crate::{syntax::Context, Encloser, Operator, SyntaxContext, SyntaxGraph};
-use std::{fmt::Debug, hash::Hash};
+use crate::{syntax::Syntax, Context, ContextId, Encloser, Operator};
+use std::{fmt::Debug, hash::Hash, sync::LazyLock};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CljContext {
   Default,
-  String,
+  InsideString,
   UnstructuredComment,
   StructuredComment,
 }
+use CljContext::*;
 
-impl Context for CljContext {
+impl ContextId for CljContext {
   fn is_comment(&self) -> bool {
-    use CljContext::*;
     match self {
       UnstructuredComment | StructuredComment => true,
       _ => false,
@@ -29,49 +29,34 @@ pub enum CljEncloser {
   String,       // "..."
   Regex,        // #"..."
   LineComment,  // ;...\n
-  BlockComment, // ;...\n
+  BlockComment, // /*...*/
 }
+use CljEncloser::*;
 impl Encloser for CljEncloser {
-  fn id_str(&self) -> &str {
-    match self {
-      CljEncloser::List => "",
-      CljEncloser::Vector => "_VECTOR_",
-      CljEncloser::HashMap => "_HASHMAP_",
-      CljEncloser::HashSet => "_HASHSET_",
-      CljEncloser::FnLiteral => "_FN_LITERAL_",
-      CljEncloser::String => "_STRING_",
-      CljEncloser::Regex => "_REGEX_",
-      CljEncloser::LineComment => "_LINE_COMMENT_",
-      CljEncloser::BlockComment => "_BLOCK_COMMENT_",
-    }
-  }
   fn opening_encloser_str(&self) -> &str {
     match self {
-      CljEncloser::List => "(",
-      CljEncloser::Vector => "[",
-      CljEncloser::HashMap => "{",
-      CljEncloser::HashSet => "#{",
-      CljEncloser::FnLiteral => "#(",
-      CljEncloser::String => "\"",
-      CljEncloser::Regex => "#\"",
-      CljEncloser::LineComment => ";",
-      CljEncloser::BlockComment => "/*",
+      List => "(",
+      Vector => "[",
+      HashMap => "{",
+      HashSet => "#{",
+      FnLiteral => "#(",
+      String => "\"",
+      Regex => "#\"",
+      LineComment => ";",
+      BlockComment => "/*",
     }
   }
   fn closing_encloser_str(&self) -> &str {
     match self {
-      CljEncloser::List => ")",
-      CljEncloser::Vector => "]",
-      CljEncloser::HashMap => "}",
-      CljEncloser::HashSet => "}",
-      CljEncloser::FnLiteral => ")",
-      CljEncloser::String => "\"",
-      CljEncloser::Regex => "\"",
-      CljEncloser::LineComment => "\n",
-      CljEncloser::BlockComment => {
-        "*/
-"
-      }
+      List => ")",
+      Vector => "]",
+      HashMap => "}",
+      HashSet => "}",
+      FnLiteral => ")",
+      String => "\"",
+      Regex => "\"",
+      LineComment => "\n",
+      BlockComment => "*/",
     }
   }
 }
@@ -86,125 +71,113 @@ pub enum CljOperator {
   Deref,         // @...
   FormComment,   // #_...
 }
+
+use CljOperator::*;
 impl Operator for CljOperator {
-  fn id_str(&self) -> &str {
-    match self {
-      CljOperator::Metadata => "_METADATA_",
-      CljOperator::Quote => "_QUOTE_",
-      CljOperator::SyntaxQuote => "_SYNTAX_QUOTE_",
-      CljOperator::Unquote => "_UNQUOTE_",
-      CljOperator::UnquoteSplice => "_UNQUOTE_SPLICE_",
-      CljOperator::Deref => "_DEREF_",
-      CljOperator::FormComment => "_FORM_COMMENT_",
-    }
-  }
   fn left_args(&self) -> usize {
     0
   }
 
   fn right_args(&self) -> usize {
     match self {
-      CljOperator::Metadata => 2,
-      CljOperator::Quote => 1,
-      CljOperator::SyntaxQuote => 1,
-      CljOperator::Unquote => 1,
-      CljOperator::UnquoteSplice => 1,
-      CljOperator::Deref => 1,
-      CljOperator::FormComment => 1,
+      Metadata => 2,
+      _ => 1,
     }
   }
 
   fn op_str(&self) -> &str {
     match self {
-      CljOperator::Metadata => "^",
-      CljOperator::Quote => "'",
-      CljOperator::SyntaxQuote => "`",
-      CljOperator::Unquote => "~",
-      CljOperator::UnquoteSplice => "~@",
-      CljOperator::Deref => "@",
-      CljOperator::FormComment => "#_",
+      Metadata => "^",
+      Quote => "'",
+      SyntaxQuote => "`",
+      Unquote => "~",
+      UnquoteSplice => "~@",
+      Deref => "@",
+      FormComment => "#_",
     }
   }
 }
 
-pub type CljSyntaxGraph = SyntaxGraph<CljContext, CljEncloser, CljOperator>;
+static DEFAULT_CTX: LazyLock<Context<CljEncloser, CljOperator>> =
+  LazyLock::new(|| {
+    Context::new(
+      vec![
+        List,
+        Vector,
+        HashMap,
+        HashSet,
+        FnLiteral,
+        String,
+        Regex,
+        LineComment,
+        BlockComment,
+      ],
+      vec![
+        Metadata,
+        Quote,
+        SyntaxQuote,
+        Unquote,
+        UnquoteSplice,
+        Deref,
+        FormComment,
+      ],
+      None,
+      vec![
+        " ".to_string(),
+        "\n".to_string(),
+        "\t".to_string(),
+        "\r".to_string(),
+      ],
+    )
+  });
 
-pub fn clj_graph() -> CljSyntaxGraph {
-  let default_context = SyntaxContext::new(
-    vec![
-      CljEncloser::List,
-      CljEncloser::Vector,
-      CljEncloser::HashMap,
-      CljEncloser::HashSet,
-      CljEncloser::FnLiteral,
-      CljEncloser::String,
-      CljEncloser::Regex,
-      CljEncloser::LineComment,
-      CljEncloser::BlockComment,
-    ],
-    vec![
-      CljOperator::Metadata,
-      CljOperator::Quote,
-      CljOperator::SyntaxQuote,
-      CljOperator::Unquote,
-      CljOperator::UnquoteSplice,
-      CljOperator::Deref,
-      CljOperator::FormComment,
-    ],
-    None,
-    vec![
-      " ".to_string(),
-      "\n".to_string(),
-      "\t".to_string(),
-      "\r".to_string(),
-    ],
-  );
-  CljSyntaxGraph::new(
-    CljContext::Default,
-    [
-      (CljContext::Default, default_context.clone()),
-      (
-        CljContext::String,
-        SyntaxContext::new(vec![], vec![], Some('\\'.to_string()), vec![]),
-      ),
-      (
-        CljContext::UnstructuredComment,
-        SyntaxContext::new(vec![], vec![], None, vec![]),
-      ),
-      (CljContext::StructuredComment, default_context),
-    ]
-    .into(),
-    [
-      (CljEncloser::List, CljContext::Default),
-      (CljEncloser::Vector, CljContext::Default),
-      (CljEncloser::HashMap, CljContext::Default),
-      (CljEncloser::HashSet, CljContext::Default),
-      (CljEncloser::FnLiteral, CljContext::Default),
-      (CljEncloser::LineComment, CljContext::UnstructuredComment),
-      (CljEncloser::BlockComment, CljContext::UnstructuredComment),
-      (CljEncloser::Regex, CljContext::String),
-      (CljEncloser::String, CljContext::String),
-    ]
-    .into_iter()
-    .collect(),
-    [
-      (CljOperator::Metadata, CljContext::Default),
-      (CljOperator::Quote, CljContext::Default),
-      (CljOperator::SyntaxQuote, CljContext::Default),
-      (CljOperator::Unquote, CljContext::Default),
-      (CljOperator::UnquoteSplice, CljContext::Default),
-      (CljOperator::Deref, CljContext::Default),
-      (CljOperator::FormComment, CljContext::StructuredComment),
-    ]
-    .into_iter()
-    .collect(),
-  )
+static STRING_CTX: LazyLock<Context<CljEncloser, CljOperator>> =
+  LazyLock::new(|| {
+    Context::new(vec![], vec![], Some('\\'.to_string()), vec![])
+  });
+
+static TRIVIAL_CTX: LazyLock<Context<CljEncloser, CljOperator>> =
+  LazyLock::new(|| Context::trivial());
+
+#[derive(Debug, Clone)]
+pub struct CljSyntax;
+impl Syntax for CljSyntax {
+  type C = CljContext;
+  type E = CljEncloser;
+  type O = CljOperator;
+
+  fn root_context(&self) -> Self::C {
+    Default
+  }
+
+  fn context<'a>(&'a self, id: &Self::C) -> &'a Context<Self::E, Self::O> {
+    match id {
+      Default | StructuredComment => &*DEFAULT_CTX,
+      InsideString => &*STRING_CTX,
+      UnstructuredComment => &*TRIVIAL_CTX,
+    }
+  }
+
+  fn encloser_context(&self, encloser: &Self::E) -> Self::C {
+    match encloser {
+      LineComment | BlockComment => UnstructuredComment,
+      Regex | String => InsideString,
+      _ => Default,
+    }
+  }
+
+  fn operator_context(&self, operator: &Self::O) -> Self::C {
+    match operator {
+      FormComment => StructuredComment,
+      _ => Default,
+    }
+  }
 }
 
 #[cfg(test)]
 mod pseudo_clj_tests {
   use crate::{
-    examples::psuedo_clj::{clj_graph, CljEncloser, CljOperator},
+    examples::psuedo_clj::{CljEncloser, CljOperator, CljSyntax},
     syntax::EncloserOrOperator,
     Parser, SyntaxTree,
   };
@@ -225,7 +198,7 @@ mod pseudo_clj_tests {
     }
     assert_eq!(
       Parser::new(
-        clj_graph(),
+        CljSyntax,
         "(+ (second [1 2 3])
           (count \"this is a string!!!\")
           (first (keys ^my-metadata {1 2 3 4}))

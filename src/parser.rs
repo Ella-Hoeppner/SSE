@@ -1,52 +1,41 @@
 use crate::{
-  parse::Parse, syntax::Context, DocumentSyntaxTree, Encloser, Operator,
-  ParseError, RawAst, SyntaxGraph,
+  ast::Sexp,
+  parse::Parse,
+  syntax::{IdStr, Syntax},
+  DocumentSyntaxTree, ParseError,
 };
 use std::fmt::Debug;
 use take_mut::take;
 
 #[derive(Debug, Clone)]
-pub struct Parser<'t, C: Context, E: Encloser, O: Operator> {
+pub struct Parser<'t, S: Syntax> {
   pub(crate) text: &'t str,
-  pub(crate) syntax_graph: SyntaxGraph<C, E, O>,
-  parsed_top_level_asts: Vec<DocumentSyntaxTree<E, O>>,
+  pub(crate) syntax: S,
+  parsed_top_level_asts: Vec<DocumentSyntaxTree<S::E, S::O>>,
   top_level_lookahead: usize,
   already_parsed_index: usize,
 }
 
-impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
-  pub fn new(syntax_graph: SyntaxGraph<C, E, O>, text: &'t str) -> Self {
+impl<'t, S: Syntax> Parser<'t, S> {
+  pub fn new(syntax: S, text: &'t str) -> Self {
     Self {
       text,
-      top_level_lookahead: syntax_graph
-        .get_context(&syntax_graph.root)
-        .operators()
-        .iter()
-        .map(|operator| operator.left_args())
-        .max()
-        .unwrap_or(0),
-      syntax_graph,
+      top_level_lookahead: syntax.context(&syntax.root_context()).lookahead(),
+      syntax,
       parsed_top_level_asts: vec![],
       already_parsed_index: 0,
     }
   }
-  pub fn replace_syntax_graph(
-    &mut self,
-    new_syntax_graph: SyntaxGraph<C, E, O>,
-  ) {
-    self.syntax_graph = new_syntax_graph;
-    self.parsed_top_level_asts.clear();
-  }
   pub fn read_next(
     &mut self,
-  ) -> Result<Option<DocumentSyntaxTree<E, O>>, ParseError> {
+  ) -> Result<Option<DocumentSyntaxTree<S::E, S::O>>, ParseError> {
     while self.parsed_top_level_asts.len() <= self.top_level_lookahead {
       let mut stolen_top_level_asts = vec![];
       std::mem::swap(
         &mut stolen_top_level_asts,
         &mut self.parsed_top_level_asts,
       );
-      match Parse::new(&self.syntax_graph, stolen_top_level_asts, &self.text)
+      match Parse::new(stolen_top_level_asts, &self.syntax, &self.text)
         .complete(self.already_parsed_index)?
       {
         Ok(new_top_level_asts) => {
@@ -74,7 +63,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
   }
   pub fn read_all(
     &mut self,
-  ) -> Vec<Result<DocumentSyntaxTree<E, O>, ParseError>> {
+  ) -> Vec<Result<DocumentSyntaxTree<S::E, S::O>, ParseError>> {
     let mut results = vec![];
     loop {
       match self.read_next() {
@@ -88,12 +77,19 @@ impl<'t, C: Context, E: Encloser, O: Operator> Parser<'t, C, E, O> {
     }
     results
   }
-  pub fn read_next_ast(&mut self) -> Result<Option<RawAst>, ParseError> {
+}
+
+impl<'t, S: Syntax> Parser<'t, S>
+where
+  S::E: IdStr,
+  S::O: IdStr,
+{
+  pub fn read_next_as_sexp(&mut self) -> Result<Option<Sexp>, ParseError> {
     self.read_next().map(|maybe_tagged_ast| {
       maybe_tagged_ast.map(|tagged_ast| tagged_ast.into())
     })
   }
-  pub fn read_all_asts(&mut self) -> Vec<Result<RawAst, ParseError>> {
+  pub fn read_all_as_sexps(&mut self) -> Vec<Result<Sexp, ParseError>> {
     self
       .read_all()
       .into_iter()

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-  document::Document,
-  syntax::{Encloser, Operator, SyntaxGraph},
-  SyntaxContext,
+  syntax::{Encloser, IdStr, Operator, Syntax},
+  Context,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -18,16 +17,18 @@ impl<'g> StringTaggedEncloser<'g> {
   }
 }
 impl<'g> Encloser for StringTaggedEncloser<'g> {
-  fn id_str(&self) -> &str {
-    self.id
-  }
-
   fn opening_encloser_str(&self) -> &'g str {
     self.opener
   }
 
   fn closing_encloser_str(&self) -> &'g str {
     self.closer
+  }
+}
+
+impl<'g> IdStr for StringTaggedEncloser<'g> {
+  fn id_str(&self) -> &str {
+    self.id
   }
 }
 
@@ -54,9 +55,6 @@ impl<'g> StringTaggedOperator<'g> {
   }
 }
 impl<'g> Operator for StringTaggedOperator<'g> {
-  fn id_str(&self) -> &str {
-    self.id
-  }
   fn op_str(&self) -> &'g str {
     self.operator
   }
@@ -70,10 +68,47 @@ impl<'g> Operator for StringTaggedOperator<'g> {
   }
 }
 
-pub type StringTaggedSyntaxGraph<'g> =
-  SyntaxGraph<&'g str, StringTaggedEncloser<'g>, StringTaggedOperator<'g>>;
+impl<'g> IdStr for StringTaggedOperator<'g> {
+  fn id_str(&self) -> &str {
+    self.id
+  }
+}
 
-impl<'g> StringTaggedSyntaxGraph<'g> {
+#[derive(Debug, Clone)]
+pub struct StringTaggedSyntax<'a> {
+  pub(crate) root: &'a str,
+  contexts: HashMap<
+    &'a str,
+    Context<StringTaggedEncloser<'a>, StringTaggedOperator<'a>>,
+  >,
+  reserved_tokens: Vec<String>,
+  encloser_contexts: HashMap<StringTaggedEncloser<'a>, &'a str>,
+  operator_contexts: HashMap<StringTaggedOperator<'a>, &'a str>,
+}
+
+impl<'a> Syntax for StringTaggedSyntax<'a> {
+  type C = &'a str;
+  type E = StringTaggedEncloser<'a>;
+  type O = StringTaggedOperator<'a>;
+
+  fn root_context(&self) -> &'a str {
+    self.root
+  }
+  fn context<'s>(&'s self, id: &&'a str) -> &'s Context<Self::E, Self::O> {
+    &self.contexts[id]
+  }
+  fn encloser_context(&self, encloser: &Self::E) -> Self::C {
+    self.encloser_contexts[encloser]
+  }
+  fn operator_context(&self, operator: &Self::O) -> Self::C {
+    self.operator_contexts[operator]
+  }
+  fn reserved_tokens(&self) -> impl Iterator<Item = &str> {
+    self.reserved_tokens.iter().map(|s| s.as_str())
+  }
+}
+
+impl<'g> StringTaggedSyntax<'g> {
   pub fn from_descriptions(
     root: &'g str,
     context_descriptions: Vec<(
@@ -85,13 +120,13 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
     encloser_descriptions: Vec<(&'g str, &'g str, &'g str, &'g str)>,
     operator_descriptions: Vec<(&'g str, &'g str, usize, usize, &'g str)>,
   ) -> Self {
-    let enclosers = encloser_descriptions
+    let encloser_contexts = encloser_descriptions
       .into_iter()
       .map(|(tag, opener, closer, context_tag)| {
         (StringTaggedEncloser::new(tag, opener, closer), context_tag)
       })
       .collect::<HashMap<_, _>>();
-    let operators = operator_descriptions
+    let operator_contexts = operator_descriptions
       .into_iter()
       .map(|(tag, operator, left_args, right_args, context_tag)| {
         (
@@ -100,29 +135,29 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
         )
       })
       .collect::<HashMap<_, _>>();
-    Self::new(
+    Self {
       root,
-      context_descriptions
+      contexts: context_descriptions
         .into_iter()
         .map(
           |(context_name, internal_tags, escape_char, whitespace_chars)| {
             (
               context_name,
-              SyntaxContext::new(
-                enclosers
+              Context::new(
+                encloser_contexts
                   .keys()
                   .filter_map(|encloser| {
-                    if internal_tags.contains(&encloser.id_str()) {
+                    if internal_tags.contains(&encloser.id) {
                       Some(encloser.clone())
                     } else {
                       None
                     }
                   })
                   .collect(),
-                operators
+                operator_contexts
                   .keys()
                   .filter_map(|encloser| {
-                    if internal_tags.contains(&encloser.id_str()) {
+                    if internal_tags.contains(&encloser.id) {
                       Some(encloser.clone())
                     } else {
                       None
@@ -136,9 +171,10 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
           },
         )
         .collect(),
-      enclosers,
-      operators,
-    )
+      encloser_contexts,
+      operator_contexts,
+      reserved_tokens: vec![],
+    }
   }
   pub fn contextless_from_descriptions(
     whitespace_chars: Vec<String>,
@@ -171,7 +207,11 @@ impl<'g> StringTaggedSyntaxGraph<'g> {
         .collect(),
     )
   }
+  pub fn with_reserved_tokens<S: Into<String>>(
+    mut self,
+    tokens: impl IntoIterator<Item = S>,
+  ) -> Self {
+    self.reserved_tokens = tokens.into_iter().map(|s| s.into()).collect();
+    self
+  }
 }
-
-pub type StringTaggedDocument<'t, 'g> =
-  Document<'t, &'g str, StringTaggedEncloser<'g>, StringTaggedOperator<'g>>;

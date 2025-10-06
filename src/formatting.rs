@@ -1,6 +1,7 @@
 use crate::{
   document::{Document, DocumentPosition},
-  Ast, Context, DocumentSyntaxTree, Encloser, EncloserOrOperator, Operator,
+  syntax::Syntax,
+  Ast, DocumentSyntaxTree, Encloser, EncloserOrOperator, Operator,
 };
 
 pub trait Formatter<E: Encloser, O: Operator> {
@@ -46,9 +47,9 @@ pub trait Formatter<E: Encloser, O: Operator> {
       }
     }
   }
-  fn format_document<'t, C: Context>(
+  fn format_document<'t, S: Syntax<E = E, O = O>>(
     &mut self,
-    document: Document<'t, C, E, O>,
+    document: Document<'t, S>,
   ) -> String {
     document
       .syntax_trees

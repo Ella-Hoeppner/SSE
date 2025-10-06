@@ -1,43 +1,74 @@
-use std::{collections::HashMap, fmt::Debug, hash::Hash};
+use std::{fmt::Debug, hash::Hash};
 
-pub trait Context: Clone + Debug + PartialEq + Eq + Hash {
+pub trait ContextId: Clone + Debug + PartialEq + Eq + Hash {
   fn is_comment(&self) -> bool;
 }
 
-impl Context for () {
+impl ContextId for () {
   fn is_comment(&self) -> bool {
     false
   }
 }
 
-impl Context for &str {
+impl ContextId for &str {
   fn is_comment(&self) -> bool {
     false
   }
 }
 
 pub trait Encloser: Debug + Clone + Eq + Hash {
-  fn id_str(&self) -> &str;
   fn opening_encloser_str(&self) -> &str;
   fn closing_encloser_str(&self) -> &str;
 }
 
+impl Encloser for () {
+  fn opening_encloser_str(&self) -> &str {
+    "("
+  }
+  fn closing_encloser_str(&self) -> &str {
+    ")"
+  }
+}
+impl IdStr for () {
+  fn id_str(&self) -> &str {
+    ""
+  }
+}
+
 pub trait Operator: Debug + Clone + Eq + Hash {
-  fn id_str(&self) -> &str;
   fn left_args(&self) -> usize;
   fn right_args(&self) -> usize;
   fn op_str(&self) -> &str;
 }
 
 #[derive(Clone, Debug)]
-pub struct SyntaxContext<E: Encloser, O: Operator> {
+pub struct Context<E: Encloser, O: Operator> {
   whitespace_chars: Vec<String>,
   pub(crate) escape_char: Option<String>,
   enclosers: Vec<E>,
   operators: Vec<O>,
 }
 
-impl<'g, E: Encloser, O: Operator> SyntaxContext<E, O> {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NoOperator {}
+impl Operator for NoOperator {
+  fn left_args(&self) -> usize {
+    unreachable!()
+  }
+  fn right_args(&self) -> usize {
+    unreachable!()
+  }
+  fn op_str(&self) -> &str {
+    unreachable!()
+  }
+}
+impl IdStr for NoOperator {
+  fn id_str(&self) -> &str {
+    unreachable!()
+  }
+}
+
+impl<'g, E: Encloser, O: Operator> Context<E, O> {
   pub fn new(
     enclosers: Vec<E>,
     operators: Vec<O>,
@@ -51,6 +82,9 @@ impl<'g, E: Encloser, O: Operator> SyntaxContext<E, O> {
       operators,
     }
   }
+  pub fn trivial() -> Self {
+    Self::new(vec![], vec![], None, vec![])
+  }
   pub fn enclosers(&self) -> &[E] {
     &self.enclosers
   }
@@ -60,6 +94,18 @@ impl<'g, E: Encloser, O: Operator> SyntaxContext<E, O> {
   pub fn is_whitespace(&self, c: &str) -> bool {
     self.whitespace_chars.contains(&c.to_string())
   }
+  pub fn lookahead(&self) -> usize {
+    self
+      .operators()
+      .iter()
+      .map(|operator| operator.left_args())
+      .max()
+      .unwrap_or(0)
+  }
+}
+
+pub trait IdStr {
+  fn id_str(&self) -> &str;
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -67,8 +113,10 @@ pub enum EncloserOrOperator<E: Encloser, O: Operator> {
   Encloser(E),
   Operator(O),
 }
-impl<E: Encloser, O: Operator> EncloserOrOperator<E, O> {
-  pub fn id_str(&self) -> &str {
+impl<E: Encloser + IdStr, O: Operator + IdStr> IdStr
+  for EncloserOrOperator<E, O>
+{
+  fn id_str(&self) -> &str {
     match self {
       EncloserOrOperator::Encloser(encloser) => encloser.id_str(),
       EncloserOrOperator::Operator(operator) => operator.id_str(),
@@ -92,86 +140,41 @@ impl<E: Encloser, O: Operator> ContainsEncloserOrOperator<E, O>
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct SyntaxGraph<C: Context, E: Encloser, O: Operator> {
-  pub(crate) root: C,
-  contexts: HashMap<C, SyntaxContext<E, O>>,
-  encloser_contexts: HashMap<E, C>,
-  operator_contexts: HashMap<O, C>,
-}
-
-impl<C: Context, E: Encloser, O: Operator> SyntaxGraph<C, E, O> {
-  pub fn new(
-    root: C,
-    contexts: HashMap<C, SyntaxContext<E, O>>,
-    encloser_contexts: HashMap<E, C>,
-    operator_contexts: HashMap<O, C>,
-  ) -> Self {
-    Self {
-      root,
-      contexts,
-      encloser_contexts,
-      operator_contexts,
-    }
+pub trait Syntax {
+  type C: ContextId;
+  type E: Encloser;
+  type O: Operator;
+  fn root_context(&self) -> Self::C;
+  fn context<'a>(&'a self, id: &Self::C) -> &'a Context<Self::E, Self::O>;
+  fn encloser_context(&self, encloser: &Self::E) -> Self::C;
+  fn operator_context(&self, operator: &Self::O) -> Self::C;
+  fn reserved_tokens(&self) -> impl Iterator<Item = &str> {
+    std::iter::empty()
   }
-  pub fn get_context(&self, context_tag: &C) -> &SyntaxContext<E, O> {
-    &self.contexts[&context_tag]
-  }
-  pub fn get_encloser_context_tag(&self, encloser: &E) -> &C {
-    &self.encloser_contexts[encloser]
-  }
-  pub fn get_operator_context_tag(&self, operator: &O) -> &C {
-    &self.operator_contexts[operator]
-  }
-  pub fn get_context_tag(
+  fn enclose_or_operator_context(
     &self,
-    encloser_or_operator: &EncloserOrOperator<E, O>,
-  ) -> &C {
+    encloser_or_operator: &EncloserOrOperator<Self::E, Self::O>,
+  ) -> Self::C {
     match encloser_or_operator {
-      EncloserOrOperator::Encloser(encloser) => {
-        self.get_encloser_context_tag(encloser)
-      }
-      EncloserOrOperator::Operator(operator) => {
-        self.get_operator_context_tag(operator)
-      }
+      EncloserOrOperator::Encloser(e) => self.encloser_context(e),
+      EncloserOrOperator::Operator(o) => self.operator_context(o),
     }
   }
-  pub(crate) fn get_closers<'g>(&'g self, context_tag: &C) -> Vec<&'g str> {
-    self.contexts[context_tag]
+  fn prefix_closer_in_context<'a>(
+    &self,
+    tag: &Self::C,
+    s: &'a str,
+  ) -> Option<&'a str> {
+    for closer in self
+      .context(tag)
       .enclosers()
       .iter()
       .map(|encloser| encloser.closing_encloser_str())
-      .collect()
-  }
-}
-
-impl<E: Encloser, O: Operator> SyntaxGraph<(), E, O> {
-  pub fn contextless(
-    enclosers: Vec<E>,
-    operators: Vec<O>,
-    whitespace_chars: Vec<String>,
-  ) -> Self {
-    Self::new(
-      (),
-      [(
-        (),
-        SyntaxContext::new(
-          enclosers.clone(),
-          operators.clone(),
-          None,
-          whitespace_chars,
-        ),
-      )]
-      .into_iter()
-      .collect(),
-      enclosers
-        .into_iter()
-        .map(|encloser| (encloser, ()))
-        .collect(),
-      operators
-        .into_iter()
-        .map(|operator| (operator, ()))
-        .collect(),
-    )
+    {
+      if s.starts_with(closer) {
+        return Some(&s[..closer.len()]);
+      }
+    }
+    None
   }
 }

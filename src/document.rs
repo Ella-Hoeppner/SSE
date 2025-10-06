@@ -3,9 +3,11 @@ use take_mut::take;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
-  ast::InvalidTreePath,
-  syntax::{ContainsEncloserOrOperator, Context, EncloserOrOperator},
-  Ast, Encloser, Operator, ParseError, Parser, RawAst, SyntaxGraph, SyntaxTree,
+  ast::{InvalidTreePath, Sexp},
+  syntax::{
+    ContainsEncloserOrOperator, ContextId, EncloserOrOperator, IdStr, Syntax,
+  },
+  Ast, Encloser, Operator, ParseError, Parser, SyntaxTree,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
@@ -132,20 +134,20 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       }
     }
   }
-  pub fn filter_comments<C: Context>(
+  pub fn filter_comments<S: Syntax<E = E, O = O>>(
     self,
-    syntax_graph: &SyntaxGraph<C, E, O>,
+    syntax: &S,
   ) -> Option<Self> {
     match self {
-      Ast::Inner((span, encloser_or_operator), children) => (!syntax_graph
-        .get_context_tag(&encloser_or_operator)
+      Ast::Inner((span, encloser_or_operator), children) => (!syntax
+        .enclose_or_operator_context(&encloser_or_operator)
         .is_comment())
       .then(|| {
         Ast::Inner(
           (span, encloser_or_operator),
           children
             .into_iter()
-            .filter_map(|child| child.filter_comments(syntax_graph))
+            .filter_map(|child| child.filter_comments(syntax))
             .collect(),
         )
       }),
@@ -274,19 +276,21 @@ impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>>
   }
 }
 
-impl<E: Encloser, O: Operator> From<DocumentSyntaxTree<E, O>> for RawAst {
+impl<E: Encloser + IdStr, O: Operator + IdStr> From<DocumentSyntaxTree<E, O>>
+  for Sexp
+{
   fn from(tree: DocumentSyntaxTree<E, O>) -> Self {
     SyntaxTree::from(tree).into()
   }
 }
 
 #[derive(Debug, Clone)]
-pub struct Document<'t, C: Context, E: Encloser, O: Operator> {
+pub struct Document<'t, S: Syntax> {
   pub text: &'t str,
   grapheme_indeces: Vec<usize>,
   newline_indeces: Vec<usize>,
-  pub syntax_graph: SyntaxGraph<C, E, O>,
-  pub syntax_trees: Vec<DocumentSyntaxTree<E, O>>,
+  pub syntax: S,
+  pub syntax_trees: Vec<DocumentSyntaxTree<S::E, S::O>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -295,12 +299,10 @@ pub struct InvalidDocumentIndex;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InvalidDocumentCharPos;
 
-impl<'t, C: Context, E: Encloser, O: Operator> TryFrom<Parser<'t, C, E, O>>
-  for Document<'t, C, E, O>
-{
+impl<'t, S: Syntax> TryFrom<Parser<'t, S>> for Document<'t, S> {
   type Error = ParseError;
 
-  fn try_from(mut parser: Parser<'t, C, E, O>) -> Result<Self, ParseError> {
+  fn try_from(mut parser: Parser<'t, S>) -> Result<Self, ParseError> {
     parser
       .read_all()
       .into_iter()
@@ -322,7 +324,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> TryFrom<Parser<'t, C, E, O>>
           text: parser.text,
           grapheme_indeces,
           newline_indeces,
-          syntax_graph: parser.syntax_graph,
+          syntax: parser.syntax,
           syntax_trees: syntax_trees
             .into_iter()
             .enumerate()
@@ -333,17 +335,17 @@ impl<'t, C: Context, E: Encloser, O: Operator> TryFrom<Parser<'t, C, E, O>>
   }
 }
 
-impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
+impl<'t, S: Syntax> Document<'t, S> {
   pub fn from_text_with_syntax(
-    syntax_graph: SyntaxGraph<C, E, O>,
+    syntax: S,
     text: &'t str,
   ) -> Result<Self, ParseError> {
-    Parser::new(syntax_graph, text).try_into()
+    Parser::new(syntax, text).try_into()
   }
   pub fn get_subtree(
     &self,
     path: &[usize],
-  ) -> Result<&DocumentSyntaxTree<E, O>, InvalidTreePath> {
+  ) -> Result<&DocumentSyntaxTree<S::E, S::O>, InvalidTreePath> {
     let mut path_iter = path.iter().copied();
     if let Some(top_level_tree_index) = path_iter.next() {
       if let Some(top_level_tree) = self.syntax_trees.get(top_level_tree_index)
@@ -368,7 +370,7 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
   }
   pub fn innermost_predicate_path(
     &self,
-    predicate: &impl Fn(&DocumentSyntaxTree<E, O>) -> bool,
+    predicate: &impl Fn(&DocumentSyntaxTree<S::E, S::O>) -> bool,
   ) -> Vec<usize> {
     self
       .syntax_trees
@@ -592,13 +594,13 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
     take(&mut self.syntax_trees, |syntax_trees| {
       syntax_trees
         .into_iter()
-        .filter_map(|tree| tree.filter_comments(&self.syntax_graph))
+        .filter_map(|tree| tree.filter_comments(&self.syntax))
         .collect()
     })
   }
   pub fn map_trees(
     mut self,
-    f: impl Fn(DocumentSyntaxTree<E, O>) -> DocumentSyntaxTree<E, O>,
+    f: impl Fn(DocumentSyntaxTree<S::E, S::O>) -> DocumentSyntaxTree<S::E, S::O>,
   ) -> Self {
     let mut trees = vec![];
     std::mem::swap(&mut self.syntax_trees, &mut trees);
@@ -626,8 +628,14 @@ impl<'t, C: Context, E: Encloser, O: Operator> Document<'t, C, E, O> {
     &self,
     root_walk_state: WalkState,
     leaf_annotator: &impl Fn(&str, &WalkState) -> Option<Annotation>,
-    encloser_annotator: &impl Fn(&E, &WalkState) -> (WalkState, Option<Annotation>),
-    operator_annotator: &impl Fn(&O, &WalkState) -> (WalkState, Option<Annotation>),
+    encloser_annotator: &impl Fn(
+      &S::E,
+      &WalkState,
+    ) -> (WalkState, Option<Annotation>),
+    operator_annotator: &impl Fn(
+      &S::O,
+      &WalkState,
+    ) -> (WalkState, Option<Annotation>),
   ) -> Vec<(Range<usize>, Annotation)> {
     let mut annotation_log = vec![];
     for tree in self.syntax_trees.iter() {
