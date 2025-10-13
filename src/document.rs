@@ -3,11 +3,11 @@ use take_mut::take;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
+  Ast, Encloser, Operator, ParseError, Parser, SyntaxTree,
   ast::{InvalidTreePath, Sexp},
   syntax::{
     ContainsEncloserOrOperator, ContextId, EncloserOrOperator, IdStr, Syntax,
   },
-  Ast, Encloser, Operator, ParseError, Parser, SyntaxTree,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
@@ -291,6 +291,7 @@ pub struct Document<'t, S: Syntax> {
   newline_indeces: Vec<usize>,
   pub syntax: S,
   pub syntax_trees: Vec<DocumentSyntaxTree<S::E, S::O>>,
+  pub parsing_failure: Option<ParseError>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -299,61 +300,59 @@ pub struct InvalidDocumentIndex;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InvalidDocumentCharPos;
 
-impl<'t, S: Syntax> TryFrom<Parser<'t, S>> for Document<'t, S> {
-  type Error = ParseError;
-
-  fn try_from(mut parser: Parser<'t, S>) -> Result<Self, ParseError> {
-    parser
+impl<'t, S: Syntax> From<Parser<'t, S>> for Document<'t, S> {
+  fn from(mut parser: Parser<'t, S>) -> Self {
+    let (mut grapheme_indeces, newline_indeces) =
+      parser.text.grapheme_indices(true).fold(
+        (vec![], vec![]),
+        |(mut grapheme_indeces, mut newline_indeces), (i, char)| {
+          grapheme_indeces.push(i);
+          if char == "\n" {
+            newline_indeces.push(i);
+          }
+          (grapheme_indeces, newline_indeces)
+        },
+      );
+    grapheme_indeces.push(parser.text.len());
+    let (syntax_trees, parsing_failure) = match parser
       .read_all()
       .into_iter()
-      .collect::<Result<Vec<_>, ParseError>>()
-      .map(|syntax_trees| {
-        let (mut grapheme_indeces, newline_indeces) =
-          parser.text.grapheme_indices(true).fold(
-            (vec![], vec![]),
-            |(mut grapheme_indeces, mut newline_indeces), (i, char)| {
-              grapheme_indeces.push(i);
-              if char == "\n" {
-                newline_indeces.push(i);
-              }
-              (grapheme_indeces, newline_indeces)
-            },
-          );
-        grapheme_indeces.push(parser.text.len());
-        Self {
-          text: parser.text,
-          grapheme_indeces,
-          newline_indeces,
-          syntax: parser.syntax,
-          syntax_trees: syntax_trees
-            .into_iter()
-            .enumerate()
-            .map(|(i, tree)| tree.calculate_paths(vec![i]))
-            .collect(),
-        }
-      })
+      .collect::<Result<Vec<_>, ParseError>>(
+    ) {
+      Ok(syntax_trees) => (
+        syntax_trees
+          .into_iter()
+          .enumerate()
+          .map(|(i, tree)| tree.calculate_paths(vec![i]))
+          .collect(),
+        None,
+      ),
+      Err(err) => (vec![], Some(err)),
+    };
+    Self {
+      grapheme_indeces,
+      newline_indeces,
+      syntax_trees,
+      parsing_failure,
+      text: parser.text,
+      syntax: parser.syntax,
+    }
   }
 }
 
 impl<'t, S: Syntax> Document<'t, S> {
-  pub fn from_text_with_syntax(
-    syntax: S,
-    text: &'t str,
-  ) -> Result<Self, ParseError> {
-    Parser::new(syntax, text).try_into()
+  pub fn from_text_with_syntax(syntax: S, text: &'t str) -> Self {
+    Parser::new(syntax, text).into()
   }
   pub fn get_subtree(
     &self,
     path: &[usize],
   ) -> Result<&DocumentSyntaxTree<S::E, S::O>, InvalidTreePath> {
     let mut path_iter = path.iter().copied();
-    if let Some(top_level_tree_index) = path_iter.next() {
-      if let Some(top_level_tree) = self.syntax_trees.get(top_level_tree_index)
-      {
-        top_level_tree.get_subtree_inner(path_iter)
-      } else {
-        Err(InvalidTreePath)
-      }
+    if let Some(top_level_tree_index) = path_iter.next()
+      && let Some(top_level_tree) = self.syntax_trees.get(top_level_tree_index)
+    {
+      top_level_tree.get_subtree_inner(path_iter)
     } else {
       Err(InvalidTreePath)
     }
@@ -371,7 +370,7 @@ impl<'t, S: Syntax> Document<'t, S> {
   pub fn innermost_predicate_path(
     &self,
     predicate: &impl Fn(&DocumentSyntaxTree<S::E, S::O>) -> bool,
-  ) -> Vec<usize> {
+  ) -> Option<Vec<usize>> {
     self
       .syntax_trees
       .iter()
@@ -385,13 +384,14 @@ impl<'t, S: Syntax> Document<'t, S> {
           },
         )
       })
-      .unwrap_or(vec![])
   }
   pub fn innermost_enclosing_path(
     &self,
     selection: &Range<usize>,
   ) -> Vec<usize> {
-    self.innermost_predicate_path(&|tree| tree.encloses(selection))
+    self
+      .innermost_predicate_path(&|tree| tree.encloses(selection))
+      .unwrap_or(vec![])
   }
   pub fn expand_selection(
     &self,
@@ -426,7 +426,7 @@ impl<'t, S: Syntax> Document<'t, S> {
     if selection.start != selection.end {
       return selection.start;
     }
-    let cursor = selection.end;
+    let cursor = selection.start;
     let mut enclosing_path = self.innermost_enclosing_path(selection);
     if enclosing_path.is_empty() {
       if let Some(preceding_tree_index) = self
@@ -591,8 +591,8 @@ impl<'t, S: Syntax> Document<'t, S> {
     }
   }
   pub fn strip_comments(&mut self) {
-    take(&mut self.syntax_trees, |syntax_trees| {
-      syntax_trees
+    take(&mut self.syntax_trees, |trees| {
+      trees
         .into_iter()
         .filter_map(|tree| tree.filter_comments(&self.syntax))
         .collect()
@@ -602,9 +602,9 @@ impl<'t, S: Syntax> Document<'t, S> {
     mut self,
     f: impl Fn(DocumentSyntaxTree<S::E, S::O>) -> DocumentSyntaxTree<S::E, S::O>,
   ) -> Self {
-    let mut trees = vec![];
-    std::mem::swap(&mut self.syntax_trees, &mut trees);
-    self.syntax_trees = trees.into_iter().map(|tree| f(tree)).collect();
+    take(&mut self.syntax_trees, |trees| {
+      trees.into_iter().map(|tree| f(tree)).collect()
+    });
     self
   }
   pub fn replace_leaves(self, leaf: &str, replacement: &str) -> Self {
@@ -669,5 +669,38 @@ impl<'t, S: Syntax> Document<'t, S> {
           .copied()
           .unwrap_or(self.text.len())
     }]
+  }
+  pub fn describe_document_position(&self, pos: Range<usize>) -> String {
+    let start = pos.start;
+    let end = pos.end;
+    let (start_row, start_col) = self.index_to_row_and_col(start).unwrap();
+    let (end_row, end_col) = self.index_to_row_and_col(end).unwrap();
+    let line_indices = (if start_row > 0 {
+      start_row - 1
+    } else {
+      start_row
+    })..=end_row;
+    let mut line_names = line_indices
+      .clone()
+      .map(|i| format!("{}", i + 1))
+      .collect::<Vec<String>>();
+    let max_line_name_length =
+      line_names.iter().map(|n| n.len()).max().unwrap();
+    for n in line_names.iter_mut() {
+      while n.len() < max_line_name_length {
+        *n += " ";
+      }
+    }
+    let mut lines = line_names
+      .into_iter()
+      .zip(line_indices)
+      .map(|(name, i)| format!("{name} | {}", self.get_line(i)))
+      .collect::<Vec<String>>()
+      .join("\n");
+    let (start_col, end_col) = (start_col.min(end_col), start_col.max(end_col));
+    lines += "\n";
+    lines += &" ".repeat(max_line_name_length + 3 + start_col);
+    lines += &"^".repeat(end_col - start_col);
+    lines
   }
 }

@@ -1,7 +1,7 @@
 use crate::{
+  Ast, DocumentSyntaxTree, Encloser, EncloserOrOperator, Operator,
   document::{Document, DocumentPosition},
   syntax::Syntax,
-  Ast, DocumentSyntaxTree, Encloser, EncloserOrOperator, Operator,
 };
 
 pub trait Formatter<E: Encloser, O: Operator> {
@@ -51,13 +51,17 @@ pub trait Formatter<E: Encloser, O: Operator> {
     &mut self,
     document: Document<'t, S>,
   ) -> String {
-    document
-      .syntax_trees
-      .into_iter()
-      .fold(String::new(), |mut s, ast| {
-        s += &self.format(ast);
-        s
-      })
+    if document.parsing_failure.is_some() {
+      document.text.to_string()
+    } else {
+      document
+        .syntax_trees
+        .into_iter()
+        .fold(String::new(), |mut s, ast| {
+          s += &self.format(ast);
+          s
+        })
+    }
   }
 }
 

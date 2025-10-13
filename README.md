@@ -3,6 +3,8 @@
 A parser for **S**ugared **S**-**E**xpressions.
 
 ### todo
+* finish `sequentialize` for `Replace` and snippet operations
+
 * don't include comments in left/right consumption counts for operators
 
 * gracefully handle missing inputs to operators

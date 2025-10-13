@@ -31,6 +31,7 @@ pub fn standard_whitespace_chars() -> Vec<String> {
 #[cfg(test)]
 mod core_tests {
   use crate::{
+    Ast, DocumentSyntaxTree, EncloserOrOperator, ParseError, Parser,
     ast::Sexp,
     diff::{AstDiff, AstSource},
     document::{
@@ -41,12 +42,12 @@ mod core_tests {
       sexp::SexpSyntax,
     },
     formatting::{AlignedToSecondFormatter, Formatter, SingleLineFormatter},
+    parse::ParseErrorKind,
     standard_whitespace_chars,
     str_tagged::{
       StringTaggedEncloser, StringTaggedOperator, StringTaggedSyntax,
     },
     syntax::{ContainsEncloserOrOperator, Syntax},
-    Ast, DocumentSyntaxTree, EncloserOrOperator, ParseError, Parser,
   };
 
   fn leaf(s: String) -> Sexp {
@@ -189,7 +190,10 @@ mod core_tests {
   fn unclosed_list_causes_error() {
     assert_eq!(
       Parser::new(SexpSyntax, "(+ 1 2").read_next_as_sexp(),
-      Err(ParseError::EndOfTextWithOpenEncloser("(".to_string()))
+      Err(ParseError {
+        kind: ParseErrorKind::EndOfTextWithOpenEncloser("(".to_string()),
+        pos: 0..1
+      })
     );
   }
 
@@ -245,7 +249,10 @@ mod core_tests {
   fn mismatched_brackets_cause_error() {
     assert_eq!(
       Parser::new(multi_bracket_graph(), "([)]").read_next_as_sexp(),
-      Err(ParseError::UnexpectedCloser(")".to_string()))
+      Err(ParseError {
+        kind: ParseErrorKind::UnexpectedCloser(")".to_string()),
+        pos: 2..3
+      })
     );
   }
 
@@ -341,7 +348,10 @@ mod core_tests {
   fn op_missing_left_arg_causes_error() {
     assert_eq!(
       Parser::new(plus_ast_graph(), "(+2)").read_next_as_sexp(),
-      Err(ParseError::OperatorMissingLeftArgument("+".to_string()))
+      Err(ParseError {
+        kind: ParseErrorKind::OperatorMissingLeftArgument("+".to_string()),
+        pos: 1..2
+      })
     );
   }
 
@@ -349,7 +359,10 @@ mod core_tests {
   fn unfinished_infix_op_causes_error() {
     assert_eq!(
       Parser::new(plus_ast_graph(), "(1+)").read_next_as_sexp(),
-      Err(ParseError::OperatorMissingRightArgument("+".to_string()))
+      Err(ParseError {
+        kind: ParseErrorKind::OperatorMissingRightArgument("+".to_string()),
+        pos: 2..3
+      })
     );
   }
 
@@ -357,7 +370,10 @@ mod core_tests {
   fn unfinished_top_level_infix_op_causes_error() {
     assert_eq!(
       Parser::new(plus_ast_graph(), "1+").read_next_as_sexp(),
-      Err(ParseError::OperatorMissingRightArgument("+".to_string()))
+      Err(ParseError {
+        kind: ParseErrorKind::OperatorMissingRightArgument("+".to_string()),
+        pos: 1..2
+      })
     );
   }
 
@@ -564,7 +580,10 @@ mod core_tests {
           leaf("1".to_string()),
           leaf("2".to_string())
         ])),
-        Err(ParseError::EndOfTextWithOpenEncloser("(".to_string()))
+        Err(ParseError {
+          kind: ParseErrorKind::EndOfTextWithOpenEncloser("(".to_string()),
+          pos: 8..9
+        })
       ]
     );
   }
@@ -604,90 +623,102 @@ mod core_tests {
   #[test]
   fn solo_ast_char_indeces() {
     assert_eq!(
-      Parser::new(SexpSyntax, "(+ 1 2)").read_next(),
-      Ok(Some(DocumentSyntaxTree::Inner(
+      Parser::new(SexpSyntax, "(+ 1 2)")
+        .read_next()
+        .unwrap()
+        .unwrap()
+        .calculate_paths(vec![0]),
+      DocumentSyntaxTree::Inner(
         (
-          DocumentPosition::new(0..7, vec![] /*todo!*/),
+          DocumentPosition::new(0..7, vec![0]),
           EncloserOrOperator::Encloser(())
         ),
         vec![
           DocumentSyntaxTree::Leaf(
-            DocumentPosition::new(1..2, vec![] /*todo!*/),
+            DocumentPosition::new(1..2, vec![0, 0]),
             "+".to_string()
           ),
           DocumentSyntaxTree::Leaf(
-            DocumentPosition::new(3..4, vec![] /*todo!*/),
+            DocumentPosition::new(3..4, vec![0, 1]),
             "1".to_string()
           ),
           DocumentSyntaxTree::Leaf(
-            DocumentPosition::new(5..6, vec![] /*todo!*/),
+            DocumentPosition::new(5..6, vec![0, 2]),
             "2".to_string()
           )
         ]
-      )))
+      )
     )
   }
 
   #[test]
   fn nested_ast_char_indeces() {
     assert_eq!(
-      Parser::new(SexpSyntax, "(* (+ 1 2) 3)").read_next(),
-      Ok(Some(DocumentSyntaxTree::Inner(
+      Parser::new(SexpSyntax, "(* (+ 1 2) 3)")
+        .read_next()
+        .unwrap()
+        .unwrap()
+        .calculate_paths(vec![0]),
+      DocumentSyntaxTree::Inner(
         (
-          DocumentPosition::new(0..13, vec![] /*todo!*/),
+          DocumentPosition::new(0..13, vec![0]),
           EncloserOrOperator::Encloser(())
         ),
         vec![
           DocumentSyntaxTree::Leaf(
-            DocumentPosition::new(1..2, vec![] /*todo!*/),
+            DocumentPosition::new(1..2, vec![0, 0]),
             "*".to_string()
           ),
           DocumentSyntaxTree::Inner(
             (
-              DocumentPosition::new(3..10, vec![] /*todo!*/),
+              DocumentPosition::new(3..10, vec![0, 1]),
               EncloserOrOperator::Encloser(())
             ),
             vec![
               DocumentSyntaxTree::Leaf(
-                DocumentPosition::new(4..5, vec![] /*todo!*/),
+                DocumentPosition::new(4..5, vec![0, 1, 0]),
                 "+".to_string()
               ),
               DocumentSyntaxTree::Leaf(
-                DocumentPosition::new(6..7, vec![] /*todo!*/),
+                DocumentPosition::new(6..7, vec![0, 1, 1]),
                 "1".to_string()
               ),
               DocumentSyntaxTree::Leaf(
-                DocumentPosition::new(8..9, vec![] /*todo!*/),
+                DocumentPosition::new(8..9, vec![0, 1, 2]),
                 "2".to_string()
               )
             ]
           ),
           DocumentSyntaxTree::Leaf(
-            DocumentPosition::new(11..12, vec![] /*todo!*/),
+            DocumentPosition::new(11..12, vec![0, 2]),
             "3".to_string()
           ),
         ]
-      )))
+      )
     )
   }
 
   #[test]
   fn multi_bracket_ast_char_indeces() {
     assert_eq!(
-      Parser::new(multi_bracket_graph(), "(union #{1 20} #{})").read_next(),
-      Ok(Some(DocumentSyntaxTree::Inner(
+      Parser::new(multi_bracket_graph(), "(union #{1 20} #{})")
+        .read_next()
+        .unwrap()
+        .unwrap()
+        .calculate_paths(vec![0]),
+      DocumentSyntaxTree::Inner(
         (
-          DocumentPosition::new(0..19, vec![] /*todo!*/),
+          DocumentPosition::new(0..19, vec![0]),
           EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
         ),
         vec![
           DocumentSyntaxTree::Leaf(
-            DocumentPosition::new(1..6, vec![] /*todo!*/),
+            DocumentPosition::new(1..6, vec![0, 0]),
             "union".to_string()
           ),
           DocumentSyntaxTree::Inner(
             (
-              DocumentPosition::new(7..14, vec![] /*todo!*/),
+              DocumentPosition::new(7..14, vec![0, 1]),
               EncloserOrOperator::Encloser(StringTaggedEncloser::new(
                 ":HASH_CURLY",
                 "#{",
@@ -696,18 +727,18 @@ mod core_tests {
             ),
             vec![
               DocumentSyntaxTree::Leaf(
-                DocumentPosition::new(9..10, vec![] /*todo!*/),
+                DocumentPosition::new(9..10, vec![0, 1, 0]),
                 "1".to_string()
               ),
               DocumentSyntaxTree::Leaf(
-                DocumentPosition::new(11..13, vec![] /*todo!*/),
+                DocumentPosition::new(11..13, vec![0, 1, 1]),
                 "20".to_string()
               )
             ]
           ),
           DocumentSyntaxTree::Inner(
             (
-              DocumentPosition::new(15..18, vec![] /*todo!*/),
+              DocumentPosition::new(15..18, vec![0, 2]),
               EncloserOrOperator::Encloser(StringTaggedEncloser::new(
                 ":HASH_CURLY",
                 "#{",
@@ -717,45 +748,48 @@ mod core_tests {
             vec![]
           ),
         ]
-      )))
+      )
     )
   }
 
   #[test]
   fn infix_char_indeces() {
     assert_eq!(
-      Parser::new(plus_ast_graph(), "(1+2)").read_next(),
-      Ok(Some(DocumentSyntaxTree::Inner(
+      Parser::new(plus_ast_graph(), "(1+2)")
+        .read_next()
+        .unwrap()
+        .unwrap()
+        .calculate_paths(vec![0]),
+      DocumentSyntaxTree::Inner(
         (
-          DocumentPosition::new(0..5, vec![] /*todo!*/),
+          DocumentPosition::new(0..5, vec![0]),
           EncloserOrOperator::Encloser(StringTaggedEncloser::new("", "(", ")"))
         ),
         vec![DocumentSyntaxTree::Inner(
           (
-            DocumentPosition::new(1..4, vec![] /*todo!*/),
+            DocumentPosition::new(1..4, vec![0, 0]),
             EncloserOrOperator::Operator(StringTaggedOperator::new(
               "PLUS", "+", 1, 1
             ))
           ),
           vec![
             DocumentSyntaxTree::Leaf(
-              DocumentPosition::new(1..2, vec![] /*todo!*/),
+              DocumentPosition::new(1..2, vec![0, 0, 0]),
               "1".to_string()
             ),
             DocumentSyntaxTree::Leaf(
-              DocumentPosition::new(3..4, vec![] /*todo!*/),
+              DocumentPosition::new(3..4, vec![0, 0, 1]),
               "2".to_string()
             )
           ]
         )]
-      )))
+      )
     );
   }
 
   #[test]
   fn ast_document_subtree() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)");
     assert_eq!(
       doc.get_subtree(&[0]).unwrap().clone(),
       Parser::new(SexpSyntax, "(* (+ 1 2) 3)")
@@ -782,8 +816,7 @@ mod core_tests {
 
   #[test]
   fn infix_ast_document_subtree() {
-    let doc =
-      Document::from_text_with_syntax(plus_ast_graph(), "(inc 1 + 2)").unwrap();
+    let doc = Document::from_text_with_syntax(plus_ast_graph(), "(inc 1 + 2)");
     assert_eq!(
       Sexp::from(doc.get_subtree(&[0, 0]).unwrap().clone()),
       Parser::new(plus_ast_graph(), "inc")
@@ -816,7 +849,7 @@ mod core_tests {
 
   #[test]
   fn multiple_infix_ast_document_subtree() {
-    let doc = Document::from_text_with_syntax(plus_ast_graph(), "a b").unwrap();
+    let doc = Document::from_text_with_syntax(plus_ast_graph(), "a b");
     assert_eq!(
       Sexp::from(doc.get_subtree(&[0]).unwrap().clone()),
       Parser::new(plus_ast_graph(), "a")
@@ -835,8 +868,7 @@ mod core_tests {
 
   #[test]
   fn ast_document_enclosing_paths() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)");
     assert_eq!(doc.innermost_enclosing_path(&(0..0)), vec![0]);
     assert_eq!(doc.innermost_enclosing_path(&(1..1)), vec![0, 0]);
     assert_eq!(doc.innermost_enclosing_path(&(2..2)), vec![0, 0]);
@@ -852,8 +884,7 @@ mod core_tests {
 
   #[test]
   fn ast_document_expand_selection() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3) ").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3) ");
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..13));
     assert_eq!(doc.expand_selection(&(0..1)), Some(0..13));
@@ -877,8 +908,7 @@ mod core_tests {
 
   #[test]
   fn two_ast_document_expand_selection() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(+ 1 2) (* 3 4)").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(+ 1 2) (* 3 4)");
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..7));
     assert_eq!(doc.expand_selection(&(7..7)), Some(0..7));
@@ -892,8 +922,7 @@ mod core_tests {
 
   #[test]
   fn two_touching_ast_document_expand_selection() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(+ 1 2)(* 3 4)").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(+ 1 2)(* 3 4)");
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..7));
     assert_eq!(doc.expand_selection(&(7..7)), Some(0..7));
@@ -905,8 +934,7 @@ mod core_tests {
 
   #[test]
   fn plus_ast_document_expand_selection() {
-    let doc =
-      Document::from_text_with_syntax(plus_ast_graph(), "1 + 2").unwrap();
+    let doc = Document::from_text_with_syntax(plus_ast_graph(), "1 + 2");
 
     assert_eq!(doc.expand_selection(&(0..0)), Some(0..1));
     assert_eq!(doc.expand_selection(&(1..1)), Some(0..1));
@@ -920,8 +948,7 @@ mod core_tests {
 
   #[test]
   fn ast_subtree_text() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)");
 
     assert_eq!(doc.get_subtree_text(&[0]).unwrap(), "(* (+ 1 2) 3)");
     assert_eq!(doc.get_subtree_text(&[0, 0]).unwrap(), "*");
@@ -931,8 +958,7 @@ mod core_tests {
 
   #[test]
   fn single_line_document_index_to_row_and_col() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)");
     for i in 0..doc.text.len() {
       assert_eq!(doc.index_to_row_and_col(i), Ok((0, i)));
     }
@@ -949,8 +975,7 @@ mod core_tests {
   #[test]
   fn multi_line_document_index_to_row_and_col() {
     let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2)\n   3\n   4)")
-        .unwrap();
+      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2)\n   3\n   4)");
     for i in 0..11 {
       assert_eq!(doc.index_to_row_and_col(i), Ok((0, i)));
     }
@@ -964,8 +989,7 @@ mod core_tests {
 
   #[test]
   fn single_line_document_row_and_col_to_index() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2) 3)");
     for i in 0..doc.text.len() {
       assert_eq!(doc.row_and_col_to_index(0, i), Ok(i));
     }
@@ -974,8 +998,7 @@ mod core_tests {
   #[test]
   fn multi_line_document_row_and_col_to_index() {
     let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(+ 1\n   2\n   3\n   4)")
-        .unwrap();
+      Document::from_text_with_syntax(SexpSyntax, "(+ 1\n   2\n   3\n   4)");
     for i in 0..4 {
       assert_eq!(doc.row_and_col_to_index(0, i), Ok(i));
     }
@@ -1001,8 +1024,7 @@ mod core_tests {
   #[test]
   fn document_row_and_col_to_index_inverts_index_to_row_and_col() {
     let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2)\n   3\n   4)\n")
-        .unwrap();
+      Document::from_text_with_syntax(SexpSyntax, "(* (+ 1 2)\n   3\n   4)\n");
     for i in 0..doc.text.len() {
       let (row, col) = doc.index_to_row_and_col(i).unwrap();
       assert_eq!(doc.row_and_col_to_index(row, col), Ok(i));
@@ -1014,27 +1036,24 @@ mod core_tests {
     let mut doc = Document::from_text_with_syntax(
       CljSyntax,
       "#_(hello!!) (+ 1 2 #_3) ;(testing\n",
-    )
-    .unwrap();
+    );
     doc.strip_comments();
     assert!(doc.syntax_trees.len() == 1);
     let Ast::Inner((_, EncloserOrOperator::Encloser(CljEncloser::List)), _) =
-      doc.syntax_trees[0]
+      doc.syntax_trees[0].clone()
     else {
       assert!(false);
       panic!()
     };
-    if let Ast::Inner((_, _), children) = doc.syntax_trees.remove(0) {
-      assert!(children.len() == 3)
-    } else {
+    let Ast::Inner((_, _), children) = doc.syntax_trees.remove(0) else {
       unreachable!()
-    }
+    };
+    assert!(children.len() == 3)
   }
 
   #[test]
   fn document_paths() {
-    let doc =
-      Document::from_text_with_syntax(SexpSyntax, "(+ 1 2 (* 3 4)) 5").unwrap();
+    let doc = Document::from_text_with_syntax(SexpSyntax, "(+ 1 2 (* 3 4)) 5");
     assert_eq!(
       doc
         .syntax_trees
@@ -1061,7 +1080,7 @@ mod core_tests {
   #[test]
   fn basic_format() {
     let source = "(+ 1 '(* 2 3) [4 5])";
-    let mut doc = Document::from_text_with_syntax(CljSyntax, source).unwrap();
+    let mut doc = Document::from_text_with_syntax(CljSyntax, source);
     assert_eq!(
       source,
       SingleLineFormatter.format(doc.syntax_trees.remove(0))
@@ -1071,8 +1090,7 @@ mod core_tests {
   #[test]
   fn infix_operator_format() {
     let source = "(abs 1+2)";
-    let mut doc =
-      Document::from_text_with_syntax(plus_ast_graph(), source).unwrap();
+    let mut doc = Document::from_text_with_syntax(plus_ast_graph(), source);
     assert_eq!(
       source,
       SingleLineFormatter.format(doc.syntax_trees.remove(0))
@@ -1082,7 +1100,7 @@ mod core_tests {
   #[test]
   fn multiline_format() {
     let source = "(+ 1\n   2)";
-    let mut doc = Document::from_text_with_syntax(CljSyntax, source).unwrap();
+    let mut doc = Document::from_text_with_syntax(CljSyntax, source);
     assert_eq!(
       source,
       AlignedToSecondFormatter::default().format(doc.syntax_trees.remove(0))
@@ -1096,7 +1114,7 @@ mod core_tests {
       2)
    (* 3
       4))";
-    let mut doc = Document::from_text_with_syntax(CljSyntax, source).unwrap();
+    let mut doc = Document::from_text_with_syntax(CljSyntax, source);
     assert_eq!(
       source,
       AlignedToSecondFormatter::default().format(doc.syntax_trees.remove(0))
@@ -1130,12 +1148,12 @@ mod core_tests {
     >,
   ) {
     let mut base_document =
-      Document::from_text_with_syntax(CljSyntax, base_source).unwrap();
+      Document::from_text_with_syntax(CljSyntax, base_source);
     for diff in AstDiff::sequentialize(diffs).unwrap() {
       diff.apply(&mut base_document.syntax_trees).unwrap();
     }
     let result_document =
-      Document::from_text_with_syntax(CljSyntax, target_source).unwrap();
+      Document::from_text_with_syntax(CljSyntax, target_source);
     assert_eq!(
       stripped_syntax_trees(base_document),
       stripped_syntax_trees(result_document)
@@ -1340,8 +1358,7 @@ mod core_tests {
       >,
     >,
   ) {
-    let base_document =
-      Document::from_text_with_syntax(CljSyntax, base_source).unwrap();
+    let base_document = Document::from_text_with_syntax(CljSyntax, base_source);
     let mut modified_document = base_document.clone();
     let mut inverse_diffs = vec![];
 

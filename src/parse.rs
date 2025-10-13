@@ -1,50 +1,69 @@
-use std::fmt::{Debug, Display};
+use std::{
+  fmt::{Debug, Display},
+  ops::Range,
+};
 
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
-  document::{DocumentPosition, DocumentSyntaxTree},
+  document::{Document, DocumentPosition, DocumentSyntaxTree},
   syntax::{Encloser, EncloserOrOperator, Operator, Syntax},
 };
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum ParseError {
+pub enum ParseErrorKind {
   EndOfTextWithOpenEncloser(String),
   UnexpectedCloser(String),
   OperatorMissingLeftArgument(String),
   OperatorMissingRightArgument(String),
 }
 
-impl Display for ParseError {
+impl Display for ParseErrorKind {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    use ParseError::*;
+    use ParseErrorKind::*;
     match self {
-      EndOfTextWithOpenEncloser(opener) => write!(
-        f,
-        "texted ended with encloser open, starting with \"{opener}\""
-      ),
+      EndOfTextWithOpenEncloser(opener) => {
+        write!(f, "Opener \"{opener}\" was never closed")
+      }
       UnexpectedCloser(closer) => {
-        write!(f, "unexpected closer {} while parsing", closer)
+        write!(f, "Encountered unmatched closer \"{closer}\"")
       }
       OperatorMissingLeftArgument(operator) => {
-        write!(f, "operator \"{operator}\" missing left argument")
+        write!(f, "Operator \"{operator}\" is missing its left argument")
       }
       OperatorMissingRightArgument(operator) => {
-        write!(f, "operator \"{operator}\" missing right argument")
+        write!(f, "Operator \"{operator}\" is missing its right argument")
       }
     }
   }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct ParseError {
+  pub pos: Range<usize>,
+  pub kind: ParseErrorKind,
+}
+
+impl ParseError {
+  pub fn describe(&self, document: &Document<'_, impl Syntax>) -> String {
+    document.describe_document_position(self.pos.clone())
+      + "\n"
+      + &format!("{}", self.kind)
+  }
+}
+
+pub struct OpenAst<S: Syntax> {
+  opening_index: usize,
+  encloser_or_operator_index: usize,
+  encloser_or_operator: EncloserOrOperator<S::E, S::O>,
+  subtrees: Vec<DocumentSyntaxTree<S::E, S::O>>,
 }
 
 pub(crate) struct Parse<'t, 's, S: Syntax> {
   text: &'t str,
   syntax: &'s S,
   inherited_top_level_asts: Vec<DocumentSyntaxTree<S::E, S::O>>,
-  open_asts: Vec<(
-    usize,
-    EncloserOrOperator<S::E, S::O>,
-    Vec<DocumentSyntaxTree<S::E, S::O>>,
-  )>,
+  open_asts: Vec<OpenAst<S>>,
 }
 
 impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
@@ -64,28 +83,37 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
     self
       .open_asts
       .last()
-      .map(|(_, encloser_or_operator, _)| {
-        self
-          .syntax
-          .enclose_or_operator_context(encloser_or_operator)
-      })
+      .map(
+        |OpenAst {
+           encloser_or_operator,
+           ..
+         }| {
+          self
+            .syntax
+            .enclose_or_operator_context(encloser_or_operator)
+        },
+      )
       .unwrap_or(self.syntax.root_context())
   }
   fn consume_left_asts(
     &mut self,
     operator: &S::O,
+    character_index: usize,
   ) -> Result<Vec<DocumentSyntaxTree<S::E, S::O>>, ParseError> {
     let n = operator.left_args();
     if n == 0 {
       Ok(vec![])
     } else {
-      if let Some((_, _, subtrees)) = self.open_asts.last_mut() {
+      if let Some(OpenAst { subtrees, .. }) = self.open_asts.last_mut() {
         if subtrees.len() >= n {
           Ok(subtrees.split_off(subtrees.len() - n))
         } else {
-          Err(ParseError::OperatorMissingLeftArgument(
-            operator.op_str().to_string(),
-          ))
+          Err(ParseError {
+            kind: ParseErrorKind::OperatorMissingLeftArgument(
+              operator.op_str().to_string(),
+            ),
+            pos: (character_index)..(character_index + operator.op_str().len()),
+          })
         }
       } else {
         if self.inherited_top_level_asts.len() >= n {
@@ -95,9 +123,12 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
               .split_off(self.inherited_top_level_asts.len() - n),
           )
         } else {
-          Err(ParseError::OperatorMissingLeftArgument(
-            operator.op_str().to_string(),
-          ))
+          Err(ParseError {
+            kind: ParseErrorKind::OperatorMissingLeftArgument(
+              operator.op_str().to_string(),
+            ),
+            pos: (character_index)..(character_index + operator.op_str().len()),
+          })
         }
       }
     }
@@ -106,7 +137,12 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
     &mut self,
     closing_index: usize,
   ) -> Option<DocumentSyntaxTree<S::E, S::O>> {
-    let (opening_index, encloser_or_operator, subtrees) = self
+    let OpenAst {
+      opening_index,
+      encloser_or_operator,
+      subtrees,
+      ..
+    } = self
       .open_asts
       .pop()
       .expect("called close_ast with no open partial Ast");
@@ -122,7 +158,11 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
     &mut self,
     ast: DocumentSyntaxTree<S::E, S::O>,
   ) -> Option<DocumentSyntaxTree<S::E, S::O>> {
-    if let Some((_, encloser_or_operator, subtrees)) = self.open_asts.last_mut()
+    if let Some(OpenAst {
+      encloser_or_operator,
+      subtrees,
+      ..
+    }) = self.open_asts.last_mut()
     {
       let end = ast.position().end();
       subtrees.push(ast);
@@ -146,13 +186,18 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
       .open_asts
       .iter()
       .rev()
-      .filter_map(|(_, encloser_or_operator, _)| {
-        if let EncloserOrOperator::Encloser(encloser) = encloser_or_operator {
-          Some(encloser.closing_encloser_str())
-        } else {
-          None
-        }
-      })
+      .filter_map(
+        |OpenAst {
+           encloser_or_operator,
+           ..
+         }| {
+          if let EncloserOrOperator::Encloser(encloser) = encloser_or_operator {
+            Some(encloser.closing_encloser_str())
+          } else {
+            None
+          }
+        },
+      )
       .next()
   }
   pub(crate) fn complete(
@@ -262,13 +307,22 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
             let closer_len = awaited_closer.len();
             finish_terminal!();
 
-            if let Some((_, encloser_or_operator, _)) = self.open_asts.last() {
+            if let Some(OpenAst {
+              encloser_or_operator,
+              encloser_or_operator_index,
+              ..
+            }) = self.open_asts.last()
+            {
               if let EncloserOrOperator::Operator(operator) =
                 encloser_or_operator
               {
-                return Err(ParseError::OperatorMissingRightArgument(
-                  operator.op_str().to_string(),
-                ));
+                return Err(ParseError {
+                  kind: ParseErrorKind::OperatorMissingRightArgument(
+                    operator.op_str().to_string(),
+                  ),
+                  pos: *encloser_or_operator_index
+                    ..(encloser_or_operator_index + operator.op_str().len()),
+                });
               }
             }
 
@@ -287,11 +341,14 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
           let beginning_marker = encloser.opening_encloser_str();
           if remaining_text.starts_with(beginning_marker) {
             finish_terminal!();
-            self.open_asts.push((
-              character_index,
-              EncloserOrOperator::Encloser(encloser.clone()),
-              vec![],
-            ));
+            self.open_asts.push(OpenAst {
+              opening_index: character_index,
+              encloser_or_operator_index: character_index,
+              encloser_or_operator: EncloserOrOperator::Encloser(
+                encloser.clone(),
+              ),
+              subtrees: vec![],
+            });
             skip_n_chars!(beginning_marker.len());
             continue 'outer;
           }
@@ -301,15 +358,19 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
           let op_marker = operator.op_str();
           if remaining_text.starts_with(op_marker) {
             finish_terminal!();
-            let leftward_args = self.consume_left_asts(operator)?;
-            self.open_asts.push((
-              leftward_args
+            let leftward_args =
+              self.consume_left_asts(operator, character_index)?;
+            self.open_asts.push(OpenAst {
+              opening_index: leftward_args
                 .first()
                 .map(|first_arg| first_arg.position().start())
                 .unwrap_or(character_index),
-              EncloserOrOperator::Operator(operator.clone()),
-              leftward_args,
-            ));
+              encloser_or_operator: EncloserOrOperator::Operator(
+                operator.clone(),
+              ),
+              encloser_or_operator_index: character_index,
+              subtrees: leftward_args,
+            });
             skip_n_chars!(op_marker.len());
             if operator.right_args() == 0 {
               if let Some(completed_ast) = self.close_ast(character_index + 1) {
@@ -326,7 +387,10 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
           .syntax
           .prefix_closer_in_context(&active_context_tag, remaining_text)
         {
-          return Err(ParseError::UnexpectedCloser(closer.to_string()));
+          return Err(ParseError {
+            kind: ParseErrorKind::UnexpectedCloser(closer.to_string()),
+            pos: character_index..(character_index + closer.len()),
+          });
         }
 
         if current_terminal_beginning.is_none() {
@@ -337,17 +401,26 @@ impl<'t, 's, S: Syntax> Parse<'t, 's, S> {
 
     match self.open_asts.last() {
       None => Ok(Err(self.inherited_top_level_asts)),
-      Some((_, encloser_or_operator, _)) => match encloser_or_operator {
-        EncloserOrOperator::Encloser(encloser) => {
-          Err(ParseError::EndOfTextWithOpenEncloser(
+      Some(OpenAst {
+        encloser_or_operator,
+        encloser_or_operator_index,
+        ..
+      }) => match encloser_or_operator {
+        EncloserOrOperator::Encloser(encloser) => Err(ParseError {
+          kind: ParseErrorKind::EndOfTextWithOpenEncloser(
             encloser.opening_encloser_str().to_string(),
-          ))
-        }
-        EncloserOrOperator::Operator(operator) => {
-          Err(ParseError::OperatorMissingRightArgument(
+          ),
+          pos: (*encloser_or_operator_index)
+            ..(*encloser_or_operator_index
+              + encloser.opening_encloser_str().len()),
+        }),
+        EncloserOrOperator::Operator(operator) => Err(ParseError {
+          kind: ParseErrorKind::OperatorMissingRightArgument(
             operator.op_str().to_string(),
-          ))
-        }
+          ),
+          pos: (*encloser_or_operator_index)
+            ..(*encloser_or_operator_index + operator.op_str().len()),
+        }),
       },
     }
   }
