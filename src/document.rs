@@ -649,4 +649,25 @@ impl<'t, S: Syntax> Document<'t, S> {
     }
     annotation_log
   }
+  pub fn get_line(&self, line_index: usize) -> &'t str {
+    &self.text[if line_index == 0 {
+      0..self
+        .newline_indeces
+        .get(0)
+        .copied()
+        .unwrap_or(self.text.len())
+    } else {
+      self
+        .newline_indeces
+        .get(line_index - 1)
+        .copied()
+        .map(|i| i + 1)
+        .unwrap_or(0)
+        ..self
+          .newline_indeces
+          .get(line_index)
+          .copied()
+          .unwrap_or(self.text.len())
+    }]
+  }
 }
