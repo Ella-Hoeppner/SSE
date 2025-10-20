@@ -2,8 +2,8 @@ use std::fmt;
 use std::fmt::Debug;
 
 use crate::{
-  syntax::{EncloserOrOperator, IdStr},
   Encloser, Operator,
+  syntax::{EncloserOrOperator, IdStr},
 };
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
@@ -19,9 +19,9 @@ pub enum Ast<
 pub struct InvalidTreePath;
 
 impl<
-    LeafData: Clone + PartialEq + Eq + Debug,
-    InnerData: Clone + PartialEq + Eq + Debug,
-  > Ast<LeafData, InnerData>
+  LeafData: Clone + PartialEq + Eq + Debug,
+  InnerData: Clone + PartialEq + Eq + Debug,
+> Ast<LeafData, InnerData>
 {
   pub(crate) fn get_subtree_inner(
     &self,
@@ -158,7 +158,7 @@ impl<
       Ast::Inner(data, children) => Ast::Inner(
         inner_processor(data),
         children
-          .into_iter()
+          .iter()
           .map(|child| child.map(leaf_processor, inner_processor))
           .collect(),
       ),
@@ -195,15 +195,12 @@ impl<
   ) -> bool {
     match pattern {
       Ast::Leaf(pattern_data, pattern_leaf) => {
-        if holes.iter().find(|(s, _)| s == pattern_leaf).is_some() {
+        if holes.iter().any(|(s, _)| s == pattern_leaf) {
           true
+        } else if let Ast::Leaf(data, leaf) = self {
+          (leaf == pattern_leaf) && leaf_equivalence_checker(data, pattern_data)
         } else {
-          if let Ast::Leaf(data, leaf) = self {
-            (leaf == pattern_leaf)
-              && leaf_equivalence_checker(data, pattern_data)
-          } else {
-            false
-          }
+          false
         }
       }
       Ast::Inner(pattern_data, pattern_children) => {
@@ -213,17 +210,17 @@ impl<
           }
           for i in 0..pattern_children.len() {
             let pattern_child = &pattern_children[i];
-            if let Ast::Leaf(_, pattern_leaf) = pattern_child {
-              if let Some(open) = holes
+            if let Ast::Leaf(_, pattern_leaf) = pattern_child
+              && let Some(open) = holes
                 .iter()
-                .find_map(|(s, open)| (s == pattern_leaf).then(|| open))
-              {
-                if *open {
-                  return true;
-                }
-                continue;
+                .find_map(|(s, open)| (s == pattern_leaf).then_some(open))
+            {
+              if *open {
+                return true;
               }
+              continue;
             }
+
             if children.len() <= i
               || !children[i].matches_pattern(
                 pattern_child,

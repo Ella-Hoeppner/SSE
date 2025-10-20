@@ -140,8 +140,9 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
   ) -> Option<Self> {
     match self {
       Ast::Inner((span, encloser_or_operator), children) => (!syntax
-        .enclose_or_operator_context(&encloser_or_operator)
-        .is_comment())
+        .encloser_or_operator_context(&encloser_or_operator)
+        .map(|ctx| ctx.is_comment())
+        .unwrap_or(false))
       .then(|| {
         Ast::Inner(
           (span, encloser_or_operator),
@@ -185,7 +186,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
       pos.path = path_prefix
         .iter()
         .cloned()
-        .chain(path.iter().copied().chain(pos.path.into_iter()))
+        .chain(path.iter().copied().chain(pos.path))
         .collect();
       pos
     };
@@ -205,7 +206,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
   ) {
     match self {
       Ast::Leaf(position, leaf) => {
-        if let Some(annotation) = leaf_annotator(&leaf, &walk_state) {
+        if let Some(annotation) = leaf_annotator(leaf, walk_state) {
           annotation_log.push((position.span.clone(), annotation))
         }
       }
@@ -213,7 +214,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
         let inner_walk_state = match encloser_or_operator {
           EncloserOrOperator::Encloser(encloser) => {
             let (inner_walk_state, maybe_annotation) =
-              encloser_annotator(encloser, &walk_state);
+              encloser_annotator(encloser, walk_state);
             if let Some(annotation) = maybe_annotation {
               let start = position.span.start;
               let end = position.span.end;
@@ -230,7 +231,7 @@ impl<E: Encloser, O: Operator> DocumentSyntaxTree<E, O> {
           }
           EncloserOrOperator::Operator(operator) => {
             let (inner_walk_state, maybe_annotation) =
-              operator_annotator(operator, &walk_state);
+              operator_annotator(operator, walk_state);
             if let Some(annotation) = maybe_annotation {
               let start = if operator.left_args() == 0 {
                 position.start()
@@ -291,7 +292,7 @@ pub struct Document<'t, S: Syntax> {
   newline_indeces: Vec<usize>,
   pub syntax: S,
   pub syntax_trees: Vec<DocumentSyntaxTree<S::E, S::O>>,
-  pub parsing_failure: Option<ParseError>,
+  pub parsing_failures: Vec<ParseError>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -314,26 +315,17 @@ impl<'t, S: Syntax> From<Parser<'t, S>> for Document<'t, S> {
         },
       );
     grapheme_indeces.push(parser.text.len());
-    let (syntax_trees, parsing_failure) = match parser
-      .read_all()
+    let (mut syntax_trees, parsing_failures) = parser.read_all();
+    syntax_trees = syntax_trees
       .into_iter()
-      .collect::<Result<Vec<_>, ParseError>>(
-    ) {
-      Ok(syntax_trees) => (
-        syntax_trees
-          .into_iter()
-          .enumerate()
-          .map(|(i, tree)| tree.calculate_paths(vec![i]))
-          .collect(),
-        None,
-      ),
-      Err(err) => (vec![], Some(err)),
-    };
+      .enumerate()
+      .map(|(i, tree)| tree.calculate_paths(vec![i]))
+      .collect();
     Self {
       grapheme_indeces,
       newline_indeces,
       syntax_trees,
-      parsing_failure,
+      parsing_failures,
       text: parser.text,
       syntax: parser.syntax,
     }
@@ -434,7 +426,8 @@ impl<'t, S: Syntax> Document<'t, S> {
         .iter()
         .enumerate()
         .rev()
-        .filter_map(|(i, tree)| (tree.position().end() < cursor).then(|| i))
+        .filter(|(_, tree)| tree.position().end() < cursor)
+        .map(|(i, _)| i)
         .next()
       {
         enclosing_path.push(preceding_tree_index);
@@ -477,54 +470,54 @@ impl<'t, S: Syntax> Document<'t, S> {
         .syntax_trees
         .iter()
         .enumerate()
-        .filter_map(|(i, tree)| (tree.position().start() > cursor).then(|| i))
+        .filter(|(_, tree)| tree.position().start() > cursor)
+        .map(|(i, _)| i)
         .next()
       {
         enclosing_path.push(preceding_tree_index);
       }
-    } else {
-      if cursor == self.get_subtree(&enclosing_path).unwrap().position().end() {
-        loop {
-          match enclosing_path.len() {
-            0 => {
-              return cursor;
-            }
-            1 => {
-              if enclosing_path[0] < self.syntax_trees.len() - 1 {
-                enclosing_path[0] += 1;
-              }
-            }
-            path_length => {
-              let parent_subtree = self
-                .get_subtree(&enclosing_path[0..path_length - 1])
-                .unwrap();
-              if let DocumentSyntaxTree::Inner(
-                (_, EncloserOrOperator::Operator(_)),
-                _,
-              ) = parent_subtree
-              {
-                if parent_subtree.position().end() == cursor {
-                  enclosing_path.pop();
-                  continue;
-                }
-              }
-              let parent = self
-                .get_subtree(&enclosing_path[0..path_length - 1])
-                .unwrap();
-              let sibling_count = if let Ast::Inner(_, siblings) = parent {
-                siblings.len()
-              } else {
-                unreachable!("uh oh")
-              };
-              if *enclosing_path.last().unwrap() == sibling_count - 1 {
-                enclosing_path.pop();
-              } else {
-                enclosing_path[path_length - 1] += 1;
-              }
+    } else if cursor
+      == self.get_subtree(&enclosing_path).unwrap().position().end()
+    {
+      loop {
+        match enclosing_path.len() {
+          0 => {
+            return cursor;
+          }
+          1 => {
+            if enclosing_path[0] < self.syntax_trees.len() - 1 {
+              enclosing_path[0] += 1;
             }
           }
-          break;
+          path_length => {
+            let parent_subtree = self
+              .get_subtree(&enclosing_path[0..path_length - 1])
+              .unwrap();
+            if let DocumentSyntaxTree::Inner(
+              (_, EncloserOrOperator::Operator(_)),
+              _,
+            ) = parent_subtree
+              && parent_subtree.position().end() == cursor
+            {
+              enclosing_path.pop();
+              continue;
+            }
+            let parent = self
+              .get_subtree(&enclosing_path[0..path_length - 1])
+              .unwrap();
+            let sibling_count = if let Ast::Inner(_, siblings) = parent {
+              siblings.len()
+            } else {
+              unreachable!("uh oh")
+            };
+            if *enclosing_path.last().unwrap() == sibling_count - 1 {
+              enclosing_path.pop();
+            } else {
+              enclosing_path[path_length - 1] += 1;
+            }
+          }
         }
+        break;
       }
     }
     if enclosing_path.is_empty() {
@@ -546,26 +539,24 @@ impl<'t, S: Syntax> Document<'t, S> {
       } else {
         Err(InvalidDocumentCharPos)
       }
-    } else {
-      if row == self.newline_indeces.len() {
-        let last_line_start = self.newline_indeces.last().unwrap();
-        let index = last_line_start + 1 + col;
-        if index <= self.text.len() {
-          Ok(index)
-        } else {
-          Err(InvalidDocumentCharPos)
-        }
-      } else if row < self.newline_indeces.len() {
-        let previous_line_start = self.newline_indeces[row - 1];
-        let line_length = self.newline_indeces[row] - previous_line_start;
-        if col < line_length {
-          Ok(previous_line_start + 1 + col)
-        } else {
-          Err(InvalidDocumentCharPos)
-        }
+    } else if row == self.newline_indeces.len() {
+      let last_line_start = self.newline_indeces.last().unwrap();
+      let index = last_line_start + 1 + col;
+      if index <= self.text.len() {
+        Ok(index)
       } else {
         Err(InvalidDocumentCharPos)
       }
+    } else if row < self.newline_indeces.len() {
+      let previous_line_start = self.newline_indeces[row - 1];
+      let line_length = self.newline_indeces[row] - previous_line_start;
+      if col < line_length {
+        Ok(previous_line_start + 1 + col)
+      } else {
+        Err(InvalidDocumentCharPos)
+      }
+    } else {
+      Err(InvalidDocumentCharPos)
     }
   }
   pub fn index_to_row_and_col(
@@ -603,7 +594,7 @@ impl<'t, S: Syntax> Document<'t, S> {
     f: impl Fn(DocumentSyntaxTree<S::E, S::O>) -> DocumentSyntaxTree<S::E, S::O>,
   ) -> Self {
     take(&mut self.syntax_trees, |trees| {
-      trees.into_iter().map(|tree| f(tree)).collect()
+      trees.into_iter().map(f).collect()
     });
     self
   }
@@ -653,7 +644,7 @@ impl<'t, S: Syntax> Document<'t, S> {
     &self.text[if line_index == 0 {
       0..self
         .newline_indeces
-        .get(0)
+        .first()
         .copied()
         .unwrap_or(self.text.len())
     } else {

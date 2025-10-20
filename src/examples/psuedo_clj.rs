@@ -1,4 +1,4 @@
-use crate::{syntax::Syntax, Context, ContextId, Encloser, Operator};
+use crate::{Context, ContextId, Encloser, Operator, syntax::Syntax};
 use std::{fmt::Debug, hash::Hash, sync::LazyLock};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -12,10 +12,7 @@ use CljContext::*;
 
 impl ContextId for CljContext {
   fn is_comment(&self) -> bool {
-    match self {
-      UnstructuredComment | StructuredComment => true,
-      _ => false,
-    }
+    matches!(self, UnstructuredComment | StructuredComment)
   }
 }
 
@@ -137,7 +134,7 @@ static STRING_CTX: LazyLock<Context<CljEncloser, CljOperator>> =
   });
 
 static TRIVIAL_CTX: LazyLock<Context<CljEncloser, CljOperator>> =
-  LazyLock::new(|| Context::trivial());
+  LazyLock::new(Context::trivial);
 
 #[derive(Debug, Clone)]
 pub struct CljSyntax;
@@ -152,24 +149,24 @@ impl Syntax for CljSyntax {
 
   fn context<'a>(&'a self, id: &Self::C) -> &'a Context<Self::E, Self::O> {
     match id {
-      Default | StructuredComment => &*DEFAULT_CTX,
-      InsideString => &*STRING_CTX,
-      UnstructuredComment => &*TRIVIAL_CTX,
+      Default | StructuredComment => &DEFAULT_CTX,
+      InsideString => &STRING_CTX,
+      UnstructuredComment => &TRIVIAL_CTX,
     }
   }
 
-  fn encloser_context(&self, encloser: &Self::E) -> Self::C {
+  fn encloser_context(&self, encloser: &Self::E) -> Option<Self::C> {
     match encloser {
-      LineComment | BlockComment => UnstructuredComment,
-      Regex | String => InsideString,
-      _ => Default,
+      LineComment | BlockComment => Some(UnstructuredComment),
+      Regex | String => Some(InsideString),
+      _ => None,
     }
   }
 
-  fn operator_context(&self, operator: &Self::O) -> Self::C {
+  fn operator_context(&self, operator: &Self::O) -> Option<Self::C> {
     match operator {
-      FormComment => StructuredComment,
-      _ => Default,
+      FormComment => Some(StructuredComment),
+      _ => None,
     }
   }
 }
@@ -177,9 +174,9 @@ impl Syntax for CljSyntax {
 #[cfg(test)]
 mod pseudo_clj_tests {
   use crate::{
+    Parser, SyntaxTree,
     examples::psuedo_clj::{CljEncloser, CljOperator, CljSyntax},
     syntax::EncloserOrOperator,
-    Parser, SyntaxTree,
   };
   use CljEncloser::*;
   use CljOperator::*;
@@ -205,8 +202,9 @@ mod pseudo_clj_tests {
           @my-atom)"
       )
       .read_next()
-      .map(|maybe_tree| maybe_tree.map(SyntaxTree::from)),
-      Ok(Some(inner(
+      .0
+      .map(SyntaxTree::from),
+      Some(inner(
         Encloser(List),
         vec![
           leaf("+"),
@@ -248,7 +246,7 @@ mod pseudo_clj_tests {
           ),
           inner(Operator(Deref), vec![leaf("my-atom"),])
         ]
-      )))
+      ))
     )
   }
 }

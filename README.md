@@ -5,8 +5,6 @@ A parser for **S**ugared **S**-**E**xpressions.
 ### todo
 * finish `sequentialize` for `Replace` and snippet operations
 
-* don't include comments in left/right consumption counts for operators
-
 * gracefully handle missing inputs to operators
   * Should still return a mostly-valid tree, but just with the specific operator usages marked as invalid, I think
 

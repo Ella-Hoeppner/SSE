@@ -68,7 +68,7 @@ impl IdStr for NoOperator {
   }
 }
 
-impl<'g, E: Encloser, O: Operator> Context<E, O> {
+impl<E: Encloser, O: Operator> Context<E, O> {
   pub fn new(
     enclosers: Vec<E>,
     operators: Vec<O>,
@@ -146,15 +146,15 @@ pub trait Syntax {
   type O: Operator;
   fn root_context(&self) -> Self::C;
   fn context<'a>(&'a self, id: &Self::C) -> &'a Context<Self::E, Self::O>;
-  fn encloser_context(&self, encloser: &Self::E) -> Self::C;
-  fn operator_context(&self, operator: &Self::O) -> Self::C;
+  fn encloser_context(&self, encloser: &Self::E) -> Option<Self::C>;
+  fn operator_context(&self, operator: &Self::O) -> Option<Self::C>;
   fn reserved_tokens(&self) -> impl Iterator<Item = &str> {
     std::iter::empty()
   }
-  fn enclose_or_operator_context(
+  fn encloser_or_operator_context(
     &self,
     encloser_or_operator: &EncloserOrOperator<Self::E, Self::O>,
-  ) -> Self::C {
+  ) -> Option<Self::C> {
     match encloser_or_operator {
       EncloserOrOperator::Encloser(e) => self.encloser_context(e),
       EncloserOrOperator::Operator(o) => self.operator_context(o),

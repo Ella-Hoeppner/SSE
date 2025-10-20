@@ -2,7 +2,7 @@ use crate::{Ast, InvalidTreePath};
 use std::fmt::Debug;
 
 fn is_prefix_of(a: &[usize], b: &[usize]) -> bool {
-  a.len() < b.len() && a.iter().zip(b.iter()).find(|(a, b)| a != b).is_none()
+  a.len() < b.len() && !a.iter().zip(b.iter()).any(|(a, b)| a != b)
 }
 
 pub trait AstWrapper<
@@ -10,8 +10,8 @@ pub trait AstWrapper<
   I: Clone + PartialEq + Eq + Debug,
 >
 {
-  fn ast<'a>(&'a self) -> &'a Ast<L, I>;
-  fn ast_mut<'a>(&'a mut self) -> &'a mut Ast<L, I>;
+  fn ast(&self) -> &Ast<L, I>;
+  fn ast_mut(&mut self) -> &mut Ast<L, I>;
   fn from_raw(ast: Ast<L, I>) -> Self;
 }
 
@@ -41,10 +41,10 @@ pub enum AstSource<
 }
 
 impl<
-    L: Clone + PartialEq + Eq + Debug,
-    I: Clone + PartialEq + Eq + Debug,
-    P: Into<Path>,
-  > From<P> for AstSource<I, L>
+  L: Clone + PartialEq + Eq + Debug,
+  I: Clone + PartialEq + Eq + Debug,
+  P: Into<Path>,
+> From<P> for AstSource<I, L>
 {
   fn from(path: P) -> Self {
     Self::Existing(path.into())
@@ -64,7 +64,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
 {
   pub fn ast<'a, W: AstWrapper<L, I>>(
     &'a self,
-    trees: &'a Vec<W>,
+    trees: &'a [W],
   ) -> Result<&'a Ast<L, I>, InvalidTreePath> {
     match self {
       AstSource::New(ast) => Ok(ast),
@@ -113,6 +113,11 @@ pub enum AstDiffOp<
 
 #[derive(Debug)]
 enum Never {}
+
+#[derive(Debug)]
+pub enum MergeConflict {
+  OperationInDeletedSubtree,
+}
 
 impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
   AstDiff<L, I>
@@ -168,7 +173,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
     self,
     trees: &mut Vec<W>,
   ) -> Result<&mut Vec<W>, Self> {
-    if 'breakable: {
+    let success = 'breakable: {
       let path = &self.path;
       match &self.op {
         AstDiffOp::Insert(source) => {
@@ -273,7 +278,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
                 break 'breakable false;
               }
               std::mem::swap(&mut tree, trees[index].ast_mut());
-              let Ok(hole) = trees[index].ast_mut().get_subtree_mut(&sub_path)
+              let Ok(hole) = trees[index].ast_mut().get_subtree_mut(sub_path)
               else {
                 break 'breakable false;
               };
@@ -289,7 +294,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
                     break 'breakable false;
                   }
                   std::mem::swap(&mut tree, &mut children[index]);
-                  let Ok(hole) = children[index].get_subtree_mut(&sub_path)
+                  let Ok(hole) = children[index].get_subtree_mut(sub_path)
                   else {
                     break 'breakable false;
                   };
@@ -310,7 +315,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
             }
             let inner = &mut trees[index];
             let Ok(remaining_subtree) =
-              inner.ast_mut().get_subtree_mut(&sub_path)
+              inner.ast_mut().get_subtree_mut(sub_path)
             else {
               break 'breakable false;
             };
@@ -327,7 +332,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
                   break 'breakable false;
                 }
                 let mut inner = children[index].clone();
-                let Ok(remaining_subtree) = inner.get_subtree_mut(&sub_path)
+                let Ok(remaining_subtree) = inner.get_subtree_mut(sub_path)
                 else {
                   break 'breakable false;
                 };
@@ -339,15 +344,12 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
           }
         },
       }
-    } {
-      Ok(trees)
-    } else {
-      Err(self)
-    }
+    };
+    if success { Ok(trees) } else { Err(self) }
   }
   pub fn inverse<W: AstWrapper<L, I>>(
     &self,
-    trees: &Vec<W>,
+    trees: &[W],
   ) -> Result<Self, &Self> {
     let path = &self.path;
     Ok(AstDiff {
@@ -436,17 +438,18 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
     match &mut self.op {
       AstDiffOp::Insert(ast_source)
       | AstDiffOp::Replace(ast_source)
-      | AstDiffOp::InsertSnippet(ast_source, _) => match ast_source {
-        AstSource::Existing(path) => {
+      | AstDiffOp::InsertSnippet(ast_source, _) => {
+        if let AstSource::Existing(path) = ast_source {
           *path = modifier(path.clone())?;
         }
-        _ => {}
-      },
+      }
       _ => {}
     }
     Ok(())
   }
-  pub fn sequentialize(mut diffs: Vec<Self>) -> Result<Vec<Self>, ()> {
+  pub fn sequentialize(
+    mut diffs: Vec<Self>,
+  ) -> Result<Vec<Self>, MergeConflict> {
     // Takes a vector of diffs describing a set of "simultaneous" changes
     // modifies them such that they can be safely applied in a sequential order.
     // The diffs are expected to be "simulatneous" in the sense that the paths
@@ -476,7 +479,7 @@ impl<L: Clone + PartialEq + Eq + Debug, I: Clone + PartialEq + Eq + Debug>
           for diff in diffs.iter_mut().skip(i + 1) {
             diff.modify_paths(&|mut other_path| {
               if is_prefix_of(&path, &other_path) {
-                return Err(());
+                return Err(MergeConflict::OperationInDeletedSubtree);
               } else if is_prefix_of(&path[0..path.len() - 1], &other_path)
                 && *path.last().unwrap() <= other_path[path.len() - 1]
               {

@@ -51,7 +51,7 @@ pub trait Formatter<E: Encloser, O: Operator> {
     &mut self,
     document: Document<'t, S>,
   ) -> String {
-    if document.parsing_failure.is_some() {
+    if !document.parsing_failures.is_empty() {
       document.text.to_string()
     } else {
       document
@@ -108,6 +108,7 @@ impl<E: Encloser, O: Operator> Formatter<E, O> for SingleLineFormatter {
   }
 }
 
+#[derive(Default)]
 pub struct AlignedToSecondFormatter {
   indentation: usize,
 }
@@ -167,11 +168,5 @@ impl<E: Encloser, O: Operator> Formatter<E, O> for AlignedToSecondFormatter {
     right_children: Vec<DocumentSyntaxTree<E, O>>,
   ) -> String {
     self.format_children_single_line(right_children)
-  }
-}
-
-impl Default for AlignedToSecondFormatter {
-  fn default() -> Self {
-    Self { indentation: 0 }
   }
 }

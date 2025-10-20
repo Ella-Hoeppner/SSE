@@ -1,9 +1,8 @@
 use std::sync::LazyLock;
 
 use crate::{
-  standard_whitespace_chars,
+  Context, standard_whitespace_chars,
   syntax::{NoOperator, Syntax},
-  Context,
 };
 
 static SEXP_CTX: LazyLock<Context<(), NoOperator>> = LazyLock::new(|| {
@@ -16,19 +15,17 @@ impl Syntax for SexpSyntax {
   type E = ();
   type O = NoOperator;
 
-  fn root_context(&self) -> Self::C {
-    ()
-  }
+  fn root_context(&self) -> Self::C {}
 
   fn context<'a>(&'a self, _: &Self::C) -> &'a Context<Self::E, Self::O> {
-    &*SEXP_CTX
+    &SEXP_CTX
   }
 
-  fn encloser_context(&self, _: &Self::E) -> Self::C {
-    ()
+  fn encloser_context(&self, _: &Self::E) -> Option<Self::C> {
+    None
   }
 
-  fn operator_context(&self, _: &Self::O) -> Self::C {
-    ()
+  fn operator_context(&self, _: &Self::O) -> Option<Self::C> {
+    None
   }
 }
