@@ -272,6 +272,14 @@ impl<
       }
     }
   }
+  pub fn walk_mut(&mut self, f: &mut impl FnMut(&mut Self)) {
+    f(self);
+    if let Self::Inner(_, children) = self {
+      for child in children {
+        child.walk_mut(f);
+      }
+    }
+  }
 }
 
 pub type Sexp = Ast<(), ()>;
