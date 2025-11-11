@@ -51,6 +51,7 @@ pub struct Context<E: Encloser, O: Operator> {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NoOperator {}
+
 impl Operator for NoOperator {
   fn left_args(&self) -> usize {
     unreachable!()
